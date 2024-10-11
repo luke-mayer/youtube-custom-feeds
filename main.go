@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/luke-mayer/application-aggregator/internal/config"
-	"github.com/luke-mayer/application-aggregator/internal/database"
+	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
+	"github.com/luke-mayer/youtube-custom-feeds/internal/database"
 )
 
 type state struct {
@@ -23,6 +23,22 @@ type state struct {
 type command struct {
 	name string
 	args []string
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
 }
 
 type commands struct {
@@ -57,62 +73,211 @@ func handlerLogin(s *state, cmd command) error {
 	}
 
 	userName := cmd.args[0]
+
+	contains, err := s.db.ContainsUser(context.Background(), userName)
+	if err != nil {
+		newErr := fmt.Sprintf("error: %s", err)
+		return errors.New(newErr)
+	}
+
+	if !contains {
+		newErr := fmt.Sprintf("error: \"%s\" is not a registered user.", userName)
+		return errors.New(newErr)
+	}
+
 	s.cfg.SetUser(userName)
 	fmt.Printf("User has been set to: %s\n", userName)
-	return nil
-}
-
-func handlerCreateApplication(s *state, cmd command) error {
-	if cmd.args == nil {
-		fmt.Println("Usage: add_application <company> <job title> <preference (-1,0,1)>")
-		return errors.New("error in handlerCreateApplication() - no arguments")
-	}
-
-	if len(cmd.args) < 3 {
-		fmt.Println("Usage: add_application <company> <job title> <preference (-1,0,1)>")
-		return errors.New("error in handlerCreateApplication() - not enough arguments provided")
-	}
-
-	pref, err := strconv.Atoi(cmd.args[2])
-	if err != nil {
-		fmt.Println("Usage: add_application \"<company>\" \"<job title>\" <preference (-1,0,1)>")
-		return errors.New("error in handlerCreateApplication() - preference argument not an integer")
-	}
-
-	params := database.CreateApplicationParams{
-		Company:     cmd.args[0],
-		Job:         cmd.args[1],
-		AppliedDate: time.Now(),
-		Preference:  int32(pref),
-	}
-
-	_, err = s.db.CreateApplication(context.Background(), params)
-	if err != nil {
-		newErr := fmt.Sprintf("error in handlerCreateApplication() - failed to create application: %s", err)
-		return errors.New(newErr)
-	}
-
-	fmt.Printf("Application for position \"%s\" at company \"%s\" with preference \"%v\" successfully added!\n", cmd.args[1], cmd.args[0], pref)
 
 	return nil
 }
 
-func handlerGetJobs(s *state, cmd command) error {
+// Used to add a user to the sql database
+func handlerRegister(s *state, cmd command) error {
 	if cmd.args == nil {
-		return errors.New("error in handlerGetJobs() - no arguments")
+		fmt.Println("Usage: register \"user\"")
+		return errors.New("error in handlerRegister() - no arguments")
 	}
 
-	companies_jobs, err := s.db.GetCompaniesJobs(context.Background())
+	if len(cmd.args) < 1 {
+		fmt.Println("Usage: register \"user\"")
+		return errors.New("error in handlerRegister() - not enough arguments provided")
+	}
+
+	params := database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      cmd.args[0],
+	}
+
+	user, err := s.db.CreateUser(context.Background(), params)
 	if err != nil {
-		newErr := fmt.Sprintf("error in handlerGetJobs() - failed to retrieve companies and jobs: %s", err)
+		newErr := fmt.Sprintf("error in handlerRegister() - failed to register user. %s", err)
 		return errors.New(newErr)
 	}
 
-	fmt.Println("All jobs (and companies) applied to: ")
-	for _, job_comp := range companies_jobs {
-		fmt.Printf("Company: %s, Job: %s\n", job_comp.Company, job_comp.Job)
+	fmt.Printf("User \"%s\" with id \"%v\" successfully registered.\n", user.Name, user.ID)
+	s.cfg.SetUser(user.Name)
+
+	return nil
+}
+
+func handlerGetUserName(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
 	}
-	fmt.Println(companies_jobs)
+
+	if len(cmd.args) < 1 {
+		fmt.Println("Usage: get_user_name \"user_name\"")
+		return errors.New("error: not enough arguments provided")
+	}
+
+	user, err := s.db.GetUserName(context.Background(), cmd.args[0])
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to retrieve user: %s", err)
+		return errors.New(newErr)
+	}
+
+	fmt.Println("name, id(uuid), created_at, updated_at")
+	fmt.Printf("%s, %v, %v, %v\n", user.Name, user.ID, user.CreatedAt, user.UpdatedAt)
+	return nil
+}
+
+func handlerGetUserId(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) < 1 {
+		fmt.Println("Usage: get_user_id \"user_id\"")
+		return errors.New("error: not enough arguments provided")
+	}
+
+	userId, err := uuid.Parse(cmd.args[0])
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to parse UUID from argument: %s", err)
+		return errors.New(newErr)
+	}
+
+	user, err := s.db.GetUserId(context.Background(), userId)
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to retrieve user: %s", err)
+		return errors.New(newErr)
+	}
+
+	fmt.Println("name, id(uuid), created_at, updated_at")
+	fmt.Printf("%s, %v, %v, %v\n", user.Name, user.ID, user.CreatedAt, user.UpdatedAt)
+	return nil
+}
+
+func handlerDeleteUserName(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) < 1 {
+		fmt.Println("Usage: delete_user_name \"user_name\"")
+		return errors.New("error: not enough arguments provided")
+	}
+
+	user, err := s.db.DeleteUserName(context.Background(), cmd.args[0])
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to delete user: %s", err)
+		return errors.New(newErr)
+	}
+
+	fmt.Printf("Deleted user \"%s\" with id \"%v\" successfully.\n", user.Name, user.ID)
+	return nil
+}
+
+func handlerDeleteUserId(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) < 1 {
+		fmt.Println("Usage: delete_user_id \"user_id\"")
+		return errors.New("error: not enough arguments provided")
+	}
+
+	userId, err := uuid.Parse(cmd.args[0])
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to parse UUID from argument: %s", err)
+		return errors.New(newErr)
+	}
+
+	user, err := s.db.DeleteUserID(context.Background(), userId)
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to delete user: %s", err)
+		return errors.New(newErr)
+	}
+
+	fmt.Printf("Deleted user \"%s\" with id \"%v\" successfully.\n", user.Name, user.ID)
+	return nil
+}
+
+func handlerUpdateUserName(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) < 2 {
+		fmt.Println("Usage: update_user_name \"user_id\" \"new user_name\"")
+		return errors.New("error: not enough arguments provided")
+	}
+
+	userId, err := uuid.Parse(cmd.args[0])
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to parse UUID from argument: %s", err)
+		return errors.New(newErr)
+	}
+
+	oldUser, err := s.db.GetUserId(context.Background(), userId)
+	if err != nil {
+		newErr := fmt.Sprintf("error retrieving current user name: %s", err)
+		return errors.New(newErr)
+	}
+
+	params := database.UpdateUserNameParams{
+		ID:        userId,
+		Name:      cmd.args[1],
+		UpdatedAt: time.Now(),
+	}
+
+	user, err := s.db.UpdateUserName(context.Background(), params)
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to update user: %s", err)
+		return errors.New(newErr)
+	}
+
+	if oldUser.Name == s.cfg.CurrentUserName {
+		s.cfg.SetUser(user.Name)
+	}
+
+	fmt.Printf("Successfully updated user with id \"%v\" with new name \"%s\"\n", user.ID, user.Name)
+	return nil
+}
+
+func handlerGetUsers(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	users, err := s.db.GetAllUsers(context.Background())
+	if err != nil {
+		newErr := fmt.Sprintf("error: failed to retrieve users: %s", err)
+		return errors.New(newErr)
+	}
+
+	fmt.Println("All users: ")
+	fmt.Println("name, id(uuid), created_at, updated_at")
+	for _, user := range users {
+		if s.cfg.CurrentUserName == user.Name {
+			fmt.Printf("(current) %s, %v, %v, %v\n", user.Name, user.ID, user.CreatedAt, user.UpdatedAt)
+		} else {
+			fmt.Printf("%s, %v, %v, %v\n", user.Name, user.ID, user.CreatedAt, user.UpdatedAt)
+		}
+	}
 
 	return nil
 }
@@ -120,9 +285,9 @@ func handlerGetJobs(s *state, cmd command) error {
 func main() {
 	var s state
 
-	temp_cfg := config.Read() // retrieves state from application-tracker-config.json
+	tempCfg := config.Read() // retrieves state from application-tracker-config.json
 
-	s.cfg = &temp_cfg
+	s.cfg = &tempCfg
 
 	db, err := sql.Open("postgres", s.cfg.DBUrl)
 	if err != nil {
@@ -135,8 +300,13 @@ func main() {
 	}
 
 	cmds.register("login", handlerLogin)
-	cmds.register("add_application", handlerCreateApplication)
-	cmds.register("get_jobs", handlerGetJobs)
+	cmds.register("register", handlerRegister)
+	cmds.register("get_users", handlerGetUsers)
+	cmds.register("get_user_name", handlerGetUserName)
+	cmds.register("get_user_id", handlerGetUserId)
+	cmds.register("delete_user_name", handlerDeleteUserName)
+	cmds.register("delete_user_id", handlerDeleteUserId)
+	cmds.register("update_user_name", handlerUpdateUserName)
 
 	args := os.Args
 	if len(args) < 2 {

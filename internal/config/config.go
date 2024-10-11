@@ -13,7 +13,7 @@ type Config struct {
 	CurrentUserName string `json:"current_user_name"`
 }
 
-const configFileName = "/.application-tracker-config.json"
+const configFileName = "/.youtube-custom-feeds-config.json"
 
 func getConfigFilePath() (string, error) {
 	path, err := os.UserHomeDir()
@@ -26,7 +26,7 @@ func getConfigFilePath() (string, error) {
 	return path, nil
 }
 
-// Writes Config data to application-tracker-config.json
+// Writes Config data to youtube-custom-feeds-config.json
 func write(cfg Config) error {
 	path, err := getConfigFilePath()
 	if err != nil {
@@ -42,14 +42,14 @@ func write(cfg Config) error {
 
 	err = os.WriteFile(path, data, 0666)
 	if err != nil {
-		newErr := fmt.Sprintf("Error in write() - issue writing data to application-tracker-config.json: %s", err)
+		newErr := fmt.Sprintf("Error in write() - issue writing data to youtube-custom-feeds-config.json: %s", err)
 		return errors.New(newErr)
 	}
 
 	return nil
 }
 
-// Reads the data from application-tracker-config.json and
+// Reads the data from youtube-custom-feeds-config.json and
 // stores it in a Config struct.
 func Read() Config {
 	path, err := getConfigFilePath()
