@@ -305,7 +305,7 @@ func main() {
 	channelURL := youtube.GetChannelURL(channelId)
 	fmt.Println(channelURL)
 
-	recentVideos, err := youtube.GetRecentVideos(service, 5, channelId)
+	recentVideos, err := youtube.GetVideosByUploadDate(service, 3, channelId)
 	if err != nil {
 		log.Println(err)
 	}
