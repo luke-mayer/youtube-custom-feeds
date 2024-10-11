@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -13,6 +12,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/database"
+	"github.com/luke-mayer/youtube-custom-feeds/internal/youtube"
 )
 
 type state struct {
@@ -283,6 +283,38 @@ func handlerGetUsers(s *state, cmd command) error {
 }
 
 func main() {
+	args := os.Args
+
+	if len(args) < 2 {
+		log.Fatalln("fatal error - less than 2 arguments provided")
+	}
+
+	channelName := args[1]
+
+	service, err := youtube.GetService()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	exists, channelId, err := youtube.GetChannelId(service, channelName)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	fmt.Printf("exists: %v, channelId: %s\n", exists, channelId)
+	channelURL := youtube.GetChannelURL(channelId)
+	fmt.Println(channelURL)
+
+	recentVideos, err := youtube.GetRecentVideos(service, 5, channelId)
+	if err != nil {
+		log.Println(err)
+	}
+
+	youtube.PrintVideos(recentVideos)
+}
+
+/*
+func main() {
 	var s state
 
 	tempCfg := config.Read() // retrieves state from application-tracker-config.json
@@ -323,3 +355,4 @@ func main() {
 		log.Fatalln(err)
 	}
 }
+*/
