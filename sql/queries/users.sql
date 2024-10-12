@@ -22,6 +22,12 @@ SELECT EXISTS (
     WHERE name = $1
 );
 
+-- name: ContainsUserById :one
+SELECT EXISTS (
+    SELECT 1 FROM users
+    WHERE id = $1
+);
+
 -- name: DeleteUserName :one
 DELETE FROM users WHERE name = $1
 RETURNING *;

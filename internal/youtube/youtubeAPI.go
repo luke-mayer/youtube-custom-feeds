@@ -26,7 +26,7 @@ func getApiKey() string {
 	return os.Getenv("YOUTUBE_API_KEY")
 }
 
-func GetService() (*youtube.Service, error) {
+func getService() (*youtube.Service, error) {
 	ctx := context.Background()
 	apiKey := getApiKey()
 	service, err := youtube.NewService(ctx, option.WithAPIKey(apiKey))

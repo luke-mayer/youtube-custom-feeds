@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -25,22 +26,6 @@ type command struct {
 	args []string
 }
 
-type RSSFeed struct {
-	Channel struct {
-		Title       string    `xml:"title"`
-		Link        string    `xml:"link"`
-		Description string    `xml:"description"`
-		Item        []RSSItem `xml:"item"`
-	} `xml:"channel"`
-}
-
-type RSSItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-}
-
 type commands struct {
 	allCommands map[string]func(*state, command) error
 }
@@ -60,6 +45,338 @@ func (c *commands) run(s *state, cmd command) error {
 		newErr := fmt.Sprintf("error in run() - command %s function call returned error: %s", cmd.name, err)
 		return errors.New(newErr)
 	}
+	return nil
+}
+
+// Retrieves unique user id
+func (s *state) getUserId() (uuid.UUID, error) {
+	user, err := s.db.GetUserName(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("error retireving info for user with name: %s",
+			s.cfg.CurrentUserName)
+	}
+
+	return user.ID, nil
+}
+
+//************************************//
+//         Pipeline Functions         //
+//************************************//
+
+// Creates a custom feed for a user
+func createFeed(s *state, userId uuid.UUID, feedName string) (database.Feed, error) {
+	feed := database.Feed{}
+	context := context.Background()
+
+	exists, err := s.db.ContainsUserById(context, userId)
+	if err != nil {
+		return feed, fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return feed, fmt.Errorf("error user with id %v does not exist in database", userId)
+	}
+
+	params := database.CreateFeedParams{
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      feedName,
+		UserID:    userId,
+	}
+
+	feed, err = s.db.CreateFeed(context, params)
+	if err != nil {
+		return feed, fmt.Errorf("error creating feed \"%s\" for user with id %v", feedName, userId)
+	}
+
+	log.Printf("Successfully created feed with - feed_id: %v, feedName: %v, for user with userId: %v",
+		feed.ID, feed.Name, feed.UserID)
+	return feed, nil
+}
+
+// Retrieves all feeds belonging to the specified user
+func getAllUserFeeds(s *state, userId uuid.UUID) ([]database.GetAllUserFeedsRow, error) {
+	feeds := []database.GetAllUserFeedsRow{}
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return feeds, fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return feeds, fmt.Errorf("error user with id %v does not exist in database", userId)
+	}
+
+	feeds, err = s.db.GetAllUserFeeds(ctx, userId)
+	if err != nil {
+		return feeds, fmt.Errorf("error retrieving feeds for user with id %v", userId)
+	}
+
+	return feeds, nil
+}
+
+// Retrieves feed id for the feed withe the provided name, belonging to the specified user
+func getUserFeedId(s *state, userId uuid.UUID, feedName string) (int32, error) {
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return 0, fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return 0, fmt.Errorf("error user with id %v does not exist in database", userId)
+	}
+
+	params := database.GetFeedIdParams{
+		UserID: userId,
+		Name:   feedName,
+	}
+
+	feedId, err := s.db.GetFeedId(ctx, params)
+	if err != nil {
+		return 0, fmt.Errorf("error retrieving feed \"%s\" for user with id %v", feedName, userId)
+	}
+
+	return feedId, nil
+}
+
+// Deletes all feeds belonging to the specified user
+func deleteAllFeeds(s *state, userId uuid.UUID) error {
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return fmt.Errorf("error user with id %v does not exist in database", userId)
+	}
+
+	err = s.db.DeleteAllFeeds(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("error deleting all feeds: %s", err)
+	}
+
+	return nil
+}
+
+// Deletes feed with given name belonging to the specified user
+func deleteFeed(s *state, userId uuid.UUID, feedName string) error {
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return fmt.Errorf("error user with id %v does not exist in database", userId)
+	}
+
+	params := database.DeleteFeedParams{
+		UserID: userId,
+		Name:   feedName,
+	}
+
+	err = s.db.DeleteFeed(ctx, params)
+	if err != nil {
+		return fmt.Errorf("error deleting feed: %s", err)
+	}
+
+	return nil
+}
+
+// Creates channel
+func createChannel(s *state, channelId string, channelName string) error {
+	channelUrl := youtube.GetChannelURL(channelId)
+
+	params := database.InsertChannelParams{
+		ChannelID:  channelId,
+		ChannelUrl: channelUrl,
+		Name:       channelName,
+	}
+
+	channel, err := s.db.InsertChannel(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("error inserting channel \"%s\" into database: %s", channelName, err)
+	}
+
+	log.Printf("Successfully inserted channel \"%s\" in database", channel.Name)
+	return nil
+}
+
+// Creates feed channel
+func createFeedChannel(s *state, feedId int32, channelId string, channelName string) error {
+	containsParams := database.ContainsFeedChannelParams{
+		FeedID:    feedId,
+		ChannelID: channelId,
+	}
+
+	exists, err := s.db.ContainsFeedChannel(context.Background(), containsParams)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	exists, err = s.db.ContainsChannel(context.Background(), channelId)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		err = createChannel(s, channelId, channelName)
+		if err != nil {
+			return err
+		}
+	}
+
+	params := database.InsertFeedChannelParams{
+		FeedID:    feedId,
+		ChannelID: channelId,
+	}
+
+	err = s.db.InsertFeedChannel(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("error inserting feedId: %v, and channelId %s, : %s", feedId, channelId, err)
+	}
+
+	return nil
+}
+
+// Deletes channel
+func deleteChannel(s *state, channelId string) error {
+	ctx := context.Background()
+
+	err := s.db.DeleteChannel(ctx, channelId)
+	if err != nil {
+		return fmt.Errorf("error deleting channel with id: %v, :%s", channelId, err)
+	}
+
+	return nil
+}
+
+// Deletes feed channel and deletes channel if references in feeds_channels db
+func deleteFeedChannel(s *state, feedId int32, channelId string) error {
+	ctx := context.Background()
+
+	params := database.DeleteFeedChannelParams{
+		FeedID:    feedId,
+		ChannelID: channelId,
+	}
+
+	err := s.db.DeleteFeedChannel(ctx, params)
+	if err != nil {
+		return fmt.Errorf("error deleting feed channel: %s", err)
+	}
+
+	exists, err := s.db.ContainsChannel(ctx, channelId)
+	if err != nil {
+		return err
+	}
+	if !exists { // deleting channel from channels if no more references in feeds_channels
+		return deleteChannel(s, channelId)
+	}
+
+	return nil
+}
+
+// Gets all the channelIds for channels in feed
+func getAllFeedChannels(s *state, feedId int32) ([]string, error) {
+	channels := []string{}
+
+	channels, err := s.db.GetAllFeedChannels(context.Background(), feedId)
+	if err != nil {
+		return channels, fmt.Errorf("error getting channel ids for feed with id: %v, :%s", feedId, err)
+	}
+
+	return channels, nil
+}
+
+// ***********************************//
+//
+//	Handler Functions          //
+//
+// ************************************//
+func handlerCreateFeed(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) != 1 {
+		fmt.Println("Usage: add_feed \"feed name\" - quotes are necessary if name contains spaces")
+		return errors.New("error: invalid arguments")
+	}
+
+	userId, err := s.getUserId()
+	if err != nil {
+		return err
+	}
+
+	feed, err := createFeed(s, userId, cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("error creating feed: %s", err)
+	}
+
+	fmt.Printf("Successfully created feed with - feed_id: %v, feedName: %v, for user with userId: %v",
+		feed.ID, feed.Name, feed.UserID)
+
+	return nil
+}
+
+func handlerGetAllUserFeeds(s *state, cmd command) error {
+	userId, err := s.getUserId()
+	if err != nil {
+		return err
+	}
+
+	feeds, err := getAllUserFeeds(s, userId)
+	if err != nil {
+		return fmt.Errorf("error retrieving feeds: %s", err)
+	}
+
+	fmt.Println("All Feeds:")
+	for _, feed := range feeds {
+		fmt.Printf(" - %s\n", feed.Name)
+	}
+
+	return nil
+}
+
+func handlerDeleteAllFeeds(s *state, cmd command) error {
+	userId, err := s.getUserId()
+	if err != nil {
+		return err
+	}
+
+	err = deleteAllFeeds(s, userId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func handlerDeleteFeed(s *state, cmd command) error {
+	if cmd.args == nil {
+		return errors.New("error: no arguments provided")
+	}
+
+	if len(cmd.args) != 1 {
+		fmt.Println("Usage: delete_feed \"feed name\" - quotes are necessary if name contains spaces")
+		return errors.New("error: invalid arguments")
+	}
+
+	userId, err := s.getUserId()
+	if err != nil {
+		return err
+	}
+
+	feedName := cmd.args[0]
+
+	err = deleteFeed(s, userId, feedName)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -283,38 +600,6 @@ func handlerGetUsers(s *state, cmd command) error {
 }
 
 func main() {
-	args := os.Args
-
-	if len(args) < 2 {
-		log.Fatalln("fatal error - less than 2 arguments provided")
-	}
-
-	channelName := args[1]
-
-	service, err := youtube.GetService()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	exists, channelId, err := youtube.GetChannelId(service, channelName)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	fmt.Printf("exists: %v, channelId: %s\n", exists, channelId)
-	channelURL := youtube.GetChannelURL(channelId)
-	fmt.Println(channelURL)
-
-	recentVideos, err := youtube.GetVideosByUploadDate(service, 3, channelId)
-	if err != nil {
-		log.Println(err)
-	}
-
-	youtube.PrintVideos(recentVideos)
-}
-
-/*
-func main() {
 	var s state
 
 	tempCfg := config.Read() // retrieves state from application-tracker-config.json
@@ -340,6 +625,11 @@ func main() {
 	cmds.register("delete_user_id", handlerDeleteUserId)
 	cmds.register("update_user_name", handlerUpdateUserName)
 
+	cmds.register("create_feed", handlerCreateFeed)
+	cmds.register("get_all_feeds", handlerGetAllUserFeeds)
+	cmds.register("delete_all_feeds", handlerDeleteAllFeeds)
+	cmds.register("delete_feed", handlerDeleteFeed)
+
 	args := os.Args
 	if len(args) < 2 {
 		log.Fatalln("fatal error - less than 2 arguments provided")
@@ -355,4 +645,3 @@ func main() {
 		log.Fatalln(err)
 	}
 }
-*/

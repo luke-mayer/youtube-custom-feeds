@@ -26,6 +26,20 @@ func (q *Queries) ContainsUser(ctx context.Context, name string) (bool, error) {
 	return exists, err
 }
 
+const containsUserById = `-- name: ContainsUserById :one
+SELECT EXISTS (
+    SELECT 1 FROM users
+    WHERE id = $1
+)
+`
+
+func (q *Queries) ContainsUserById(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRowContext(ctx, containsUserById, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, created_at, updated_at, name)
 VALUES (

@@ -10,6 +10,25 @@ import (
 	"github.com/google/uuid"
 )
 
+type Channel struct {
+	ChannelID  string
+	ChannelUrl string
+	Name       string
+}
+
+type Feed struct {
+	ID        int32
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string
+	UserID    uuid.UUID
+}
+
+type FeedsChannel struct {
+	FeedID    int32
+	ChannelID string
+}
+
 type User struct {
 	ID        uuid.UUID
 	CreatedAt time.Time
