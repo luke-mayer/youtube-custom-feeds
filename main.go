@@ -185,7 +185,7 @@ func deleteFeed(s *state, userId uuid.UUID, feedName string) error {
 }
 
 // Creates channel
-func createChannel(s *state, channelId string, channelName string) error {
+func createChannel(s *state, channelId, channelName string) error {
 	channelUrl := youtube.GetChannelURL(channelId)
 
 	params := database.InsertChannelParams{
@@ -204,7 +204,7 @@ func createChannel(s *state, channelId string, channelName string) error {
 }
 
 // Creates feed channel
-func createFeedChannel(s *state, feedId int32, channelId string, channelName string) error {
+func createFeedChannel(s *state, feedId int32, channelId, channelName string) error {
 	containsParams := database.ContainsFeedChannelParams{
 		FeedID:    feedId,
 		ChannelID: channelId,

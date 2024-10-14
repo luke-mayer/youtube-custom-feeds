@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"slices"
@@ -41,7 +42,13 @@ func getService() (*youtube.Service, error) {
 	return service, nil
 }
 
-func GetChannelId(service *youtube.Service, channelName string) (bool, string, error) {
+func GetChannelId(channelName string) (bool, string, error) {
+	service, err := getService()
+	if err != nil {
+		newErr := fmt.Errorf("in getChannelId(): error getting youtube service: %s", err)
+		return false, "", newErr
+	}
+
 	call := service.Search.List([]string{"snippet"}).
 		Q(channelName).
 		Type("channel").
@@ -63,9 +70,63 @@ func GetChannelId(service *youtube.Service, channelName string) (bool, string, e
 	return false, returnString, nil
 }
 
+// Might be unecessary
 func GetChannelURL(channelId string) string {
 	channelURL := fmt.Sprintf("https://www.youtube.com/channel/%s", channelId)
 	return channelURL
+}
+
+// Returns url to get xml of recent videos from provided channel
+func getChannelRssUrl(channelId string) string {
+	channelURL := fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelId)
+	return channelURL
+}
+
+// Parses entries from an rssFeed and returns them as a video slice
+func getFeedAsVideos(limit int, feed *rssFeed) ([]video, error) {
+	videos := []video{}
+	channelName := html.UnescapeString(feed.Title)
+
+	for i, entry := range feed.Entry {
+		if i >= limit {
+			break
+		}
+
+		publishedAt, err := time.Parse(time.RFC3339, entry.Published)
+		if err != nil {
+			return []video{}, fmt.Errorf("in getFeedAsVideos(): error parsing publishedAt time: %s", err)
+		}
+
+		vid := video{
+			ChannelName:  channelName,
+			Title:        html.UnescapeString(entry.Title),
+			VideoId:      entry.VideoId,
+			ThumbnailURL: entry.MediaGroup.MediaThumbnail.Url,
+			PublishedAt:  publishedAt,
+			VideoURL:     entry.Link.Href,
+		}
+
+		videos = append(videos, vid)
+	}
+
+	return videos, nil
+}
+
+// Returns recent videos from a youtube with the provided channel Id
+func getVideosRSS(limit int, channelId string) ([]video, error) {
+	rssUrl := getChannelRssUrl(channelId)
+
+	feed, err := fetchRSSFeed(context.Background(), rssUrl)
+	if err != nil {
+		return []video{}, fmt.Errorf("in getVideosRSS(): error fetching the rssFeed: %s", err)
+	}
+
+	videos, err := getFeedAsVideos(limit, feed)
+	if err != nil {
+		return []video{}, fmt.Errorf("in getVideosRSS(): error converting rssFeed to []video: %s", err)
+	}
+
+	return videos, nil
 }
 
 func responseToVideos(response *youtube.SearchListResponse) []video {
@@ -256,6 +317,59 @@ func getFeedVideosByAmount(num int64, channelIDs []string) ([]video, []error) {
 	}()
 
 	waitGroupFinished.Wait()
+	return allVideos, allErrors
+}
+
+func getFeedVideos(limit int, channelIDs []string) ([]video, []error) {
+	var waitGroupChannels, waitGroupFinished sync.WaitGroup
+	videoSliceChannel := make(chan []video, len(channelIDs))
+	errorsChannel := make(chan error, 2*len(channelIDs))
+	allVideos := []video{}
+	allErrors := []error{}
+
+	for _, channelID := range channelIDs {
+		waitGroupChannels.Add(1)
+
+		go func(id string) {
+			defer waitGroupChannels.Done()
+
+			videos, err := getVideosRSS(limit, channelID)
+			if err != nil {
+				newErr := fmt.Errorf("in getFeedVideos: error retrieving videos for channel with ID: %s, :%s", channelID, err)
+				log.Printf("%v\n", newErr)
+				errorsChannel <- newErr
+			}
+
+			videoSliceChannel <- videos
+		}(channelID)
+	}
+
+	// Closes channel after all the videos are retrieved
+	go func() {
+		waitGroupChannels.Wait()
+		close(videoSliceChannel)
+		close(errorsChannel)
+	}()
+
+	waitGroupFinished.Add(1)
+	go func() {
+		for videos := range videoSliceChannel {
+			allVideos = append(allVideos, videos...)
+		}
+		waitGroupFinished.Done()
+	}()
+
+	waitGroupFinished.Add(1)
+	go func() {
+		for err := range errorsChannel {
+			allErrors = append(allErrors, err)
+		}
+		waitGroupFinished.Done()
+	}()
+
+	waitGroupFinished.Wait()
+	sortByDate(allVideos) // sorting into descending order by publication date and time
+
 	return allVideos, allErrors
 }
 
