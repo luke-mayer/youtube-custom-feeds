@@ -20,6 +20,18 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
+const getChannelByName = `-- name: GetChannelByName :one
+SELECT channel_id FROM channels
+WHERE name = $1 LIMIT 1
+`
+
+func (q *Queries) GetChannelByName(ctx context.Context, name string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getChannelByName, name)
+	var channel_id string
+	err := row.Scan(&channel_id)
+	return channel_id, err
+}
+
 const getChannelNameUrl = `-- name: GetChannelNameUrl :one
 SELECT channel_url, name FROM channels
 WHERE channel_id = $1

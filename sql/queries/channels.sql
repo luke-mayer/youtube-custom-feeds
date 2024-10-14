@@ -15,3 +15,7 @@ WHERE channel_id = $1;
 DELETE FROM channels
 WHERE channel_id = $1
 RETURNING *;
+
+-- name: GetChannelByName :one
+SELECT channel_id FROM channels
+WHERE name = $1 LIMIT 1;

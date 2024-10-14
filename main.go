@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -281,14 +279,43 @@ func deleteFeedChannel(s *state, feedId int32, channelId string) error {
 
 // Gets all the channelIds for channels in feed
 func getAllFeedChannels(s *state, feedId int32) ([]string, error) {
-	channels := []string{}
 
 	channels, err := s.db.GetAllFeedChannels(context.Background(), feedId)
 	if err != nil {
-		return channels, fmt.Errorf("error getting channel ids for feed with id: %v, :%s", feedId, err)
+		return []string{}, fmt.Errorf("in getAllFeedChannels(): error getting channel ids for feed with id: %v, :%s", feedId, err)
 	}
 
 	return channels, nil
+}
+
+// Adds the channel to feed, calling createFeedChannel
+func addChannelToFeed(s *state, feedId int32, channelName string) error {
+	var channelId string
+	var exists bool
+	ctx := context.Background()
+
+	userId, err := s.getUserId()
+	if err != nil {
+		return fmt.Errorf("in addChannelToFeed(): error retrieving userId: %s", userId)
+	}
+
+	channelId, err = s.db.GetChannelByName(ctx, channelName)
+	if err != nil {
+		log.Printf("in addChannelToFeed(): error getting channelId, channel name may not exist in db yet: %s", err)
+		exists, channelId, err = youtube.GetChannelId(channelName)
+		if err != nil {
+			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId: %s", err)
+		} else if !exists {
+			return fmt.Errorf("in addChannelToFeed(): channelName did not match any youtube channel")
+		}
+	}
+
+	err = createFeedChannel(s, feedId, channelId, channelName)
+	if err != nil {
+		return fmt.Errorf("in addChannelToFeed(): error creating feed channel: %s", err)
+	}
+
+	return nil
 }
 
 // ***********************************//
@@ -599,6 +626,7 @@ func handlerGetUsers(s *state, cmd command) error {
 	return nil
 }
 
+/*
 func main() {
 	var s state
 
@@ -645,3 +673,4 @@ func main() {
 		log.Fatalln(err)
 	}
 }
+*/
