@@ -9,9 +9,11 @@ import (
 )
 
 type Channel struct {
-	ChannelID  string
-	ChannelUrl string
-	Name       string
+	ChannelID       string
+	ChannelUploadID string
+	ChannelHandle   string
+	ChannelUrl      string
+	Name            string
 }
 
 type Feed struct {

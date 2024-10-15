@@ -19,6 +19,8 @@ CREATE TABLE feeds (
 
 CREATE TABLE channels (
     channel_id VARCHAR(255) PRIMARY KEY,
+    channel_upload_id VARCHAR(255) UNIQUE NOT NULL,
+    channel_handle VARCHAR(255) UNIQUE NOT NULL,
     channel_url TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL
 );

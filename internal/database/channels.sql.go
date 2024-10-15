@@ -9,10 +9,23 @@ import (
 	"context"
 )
 
+const containsChannelInDB = `-- name: ContainsChannelInDB :one
+SELECT EXISTS (
+    SELECT 1 FROM channels
+    WHERE channel_handle = $1
+)
+`
+
+func (q *Queries) ContainsChannelInDB(ctx context.Context, channelHandle string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, containsChannelInDB, channelHandle)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteChannel = `-- name: DeleteChannel :exec
 DELETE FROM channels
 WHERE channel_id = $1
-RETURNING channel_id, channel_url, name
 `
 
 func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
@@ -20,54 +33,67 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
-const getChannelByName = `-- name: GetChannelByName :one
-SELECT channel_id FROM channels
-WHERE name = $1 LIMIT 1
+const getChannelHandleUploadId = `-- name: GetChannelHandleUploadId :one
+SELECT channel_handle, channel_upload_id FROM channels
+WHERE channel_id = $1
 `
 
-func (q *Queries) GetChannelByName(ctx context.Context, name string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getChannelByName, name)
+type GetChannelHandleUploadIdRow struct {
+	ChannelHandle   string
+	ChannelUploadID string
+}
+
+func (q *Queries) GetChannelHandleUploadId(ctx context.Context, channelID string) (GetChannelHandleUploadIdRow, error) {
+	row := q.db.QueryRowContext(ctx, getChannelHandleUploadId, channelID)
+	var i GetChannelHandleUploadIdRow
+	err := row.Scan(&i.ChannelHandle, &i.ChannelUploadID)
+	return i, err
+}
+
+const getChannelIdByHandle = `-- name: GetChannelIdByHandle :one
+SELECT channel_id FROM channels
+WHERE channel_handle = $1
+`
+
+func (q *Queries) GetChannelIdByHandle(ctx context.Context, channelHandle string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getChannelIdByHandle, channelHandle)
 	var channel_id string
 	err := row.Scan(&channel_id)
 	return channel_id, err
 }
 
-const getChannelNameUrl = `-- name: GetChannelNameUrl :one
-SELECT channel_url, name FROM channels
-WHERE channel_id = $1
-`
-
-type GetChannelNameUrlRow struct {
-	ChannelUrl string
-	Name       string
-}
-
-func (q *Queries) GetChannelNameUrl(ctx context.Context, channelID string) (GetChannelNameUrlRow, error) {
-	row := q.db.QueryRowContext(ctx, getChannelNameUrl, channelID)
-	var i GetChannelNameUrlRow
-	err := row.Scan(&i.ChannelUrl, &i.Name)
-	return i, err
-}
-
 const insertChannel = `-- name: InsertChannel :one
-INSERT INTO channels (channel_id, channel_url, name)
+INSERT INTO channels (channel_id, channel_upload_id, channel_handle, channel_url)
 VALUES(
     $1,
     $2,
-    $3
+    $3,
+    $4
 )
-RETURNING channel_id, channel_url, name
+RETURNING channel_id, channel_upload_id, channel_handle, channel_url, name
 `
 
 type InsertChannelParams struct {
-	ChannelID  string
-	ChannelUrl string
-	Name       string
+	ChannelID       string
+	ChannelUploadID string
+	ChannelHandle   string
+	ChannelUrl      string
 }
 
 func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (Channel, error) {
-	row := q.db.QueryRowContext(ctx, insertChannel, arg.ChannelID, arg.ChannelUrl, arg.Name)
+	row := q.db.QueryRowContext(ctx, insertChannel,
+		arg.ChannelID,
+		arg.ChannelUploadID,
+		arg.ChannelHandle,
+		arg.ChannelUrl,
+	)
 	var i Channel
-	err := row.Scan(&i.ChannelID, &i.ChannelUrl, &i.Name)
+	err := row.Scan(
+		&i.ChannelID,
+		&i.ChannelUploadID,
+		&i.ChannelHandle,
+		&i.ChannelUrl,
+		&i.Name,
+	)
 	return i, err
 }

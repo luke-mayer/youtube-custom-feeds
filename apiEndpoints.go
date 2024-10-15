@@ -8,12 +8,12 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
 	"google.golang.org/api/idtoken"
 )
 
 const PORT = ":8080"
 const PREFIX = "/api/v1"
-const CLIENT_ID = "CLIENT_ID_NEED_TO_DO"
 
 type StatusCodes struct {
 	Success       int
@@ -63,6 +63,12 @@ type idTokenParams struct {
 type feedParams struct {
 	IdToken  string `json:"idToken"`
 	FeedName string `json:"feedName"`
+}
+
+type addChannelParams struct {
+	IdToken     string `json:"idToken"`
+	FeedName    string `json:"feedName"`
+	ChannelName string `json:"channelName"`
 }
 
 func (p idTokenParams) getIdToken() string {
@@ -126,7 +132,12 @@ func writeResponse(w http.ResponseWriter, message string, statusCode int) {
 
 // validates OAuth2 ID token and returns googleId (sum field)
 func validateIdToken(token string) (string, error) {
-	payload, err := idtoken.Validate(context.Background(), token, CLIENT_ID)
+	clientId, err := config.GetClientId()
+	if err != nil {
+		return "", fmt.Errorf("in validateIdToken(): error retrieiving client id: %s", err)
+	}
+
+	payload, err := idtoken.Validate(context.Background(), token, clientId)
 	if err != nil {
 		return "", fmt.Errorf("in validateIdToken(): error validating token: %s", err)
 	}
@@ -176,6 +187,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	message := statusCodeMessages[statusCodes.Success]
+
 	if !exists {
 		err := registerUser(s, googleId)
 		if err != nil {
@@ -184,10 +197,13 @@ func login(w http.ResponseWriter, r *http.Request) {
 			writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 			return
 		}
+		message = "user did not exist in database - created new user"
 	}
+
+	writeResponse(w, message, statusCodes.Success)
 }
 
-// POST
+// POST - Creates a new feed
 func createFeedPOST(w http.ResponseWriter, r *http.Request) {
 	params := feedParams{}
 
@@ -205,9 +221,10 @@ func createFeedPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	message := fmt.Sprintf("Feed - %s - successfully created", params.FeedName)
-	writeResponse(w, message, 200)
+	writeResponse(w, message, statusCodes.Success)
 }
 
+// POST - adds the youtube channel to the user's indicated field
 func addChannelPOST(w http.ResponseWriter, req *http.Request) {
 
 }
@@ -231,8 +248,8 @@ func deleteChannelDELETE(w http.ResponseWriter, req *http.Request) {
 func main() {
 	router := mux.NewRouter()
 	api := router.PathPrefix(PREFIX).Subrouter()
-
-	api.HandleFunc("", createFeedPOST).Methods(http.MethodPost)
+	api.HandleFunc("/login", login).Methods(http.MethodPost)
+	api.HandleFunc("/create/feed", createFeedPOST).Methods(http.MethodPost)
 	api.HandleFunc("", addChannelPOST).Methods(http.MethodPost)
 	api.HandleFunc("", getVideosGET).Methods(http.MethodGet)
 	api.HandleFunc("", renameFeedPATCH).Methods(http.MethodPatch)
