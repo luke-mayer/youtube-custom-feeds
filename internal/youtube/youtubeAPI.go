@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"html"
 	"log"
-	"os"
+
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
 	"golang.org/x/net/context"
 	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
@@ -26,13 +27,23 @@ type video struct {
 	VideoURL     string    `json:"videoURL"`
 }
 
-func getApiKey() string {
-	return os.Getenv("YOUTUBE_API_KEY")
+func getApiKey() (string, error) {
+	//return os.Getenv("YOUTUBE_API_KEY")
+	apiKey, err := config.GetSecret(config.ApiKeySecretName)
+	if err != nil {
+		return "", fmt.Errorf("in getApiKey(): error retrieving youtube api key: %s", err)
+	}
+
+	return apiKey, nil
 }
 
 func getService() (*youtube.Service, error) {
 	ctx := context.Background()
-	apiKey := getApiKey()
+	apiKey, err := getApiKey()
+	if err != nil {
+		return nil, fmt.Errorf("in getService(): error retrieving apiKey: %s", err)
+	}
+
 	service, err := youtube.NewService(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		newErr := fmt.Sprintf("in getService(): error creating YouTube client:\n%v", err)
