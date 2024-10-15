@@ -97,15 +97,15 @@ func getAllUserFeeds(s *state, userId int32) ([]database.GetAllUserFeedsRow, err
 
 	exists, err := s.db.ContainsUserById(ctx, userId)
 	if err != nil {
-		return feeds, fmt.Errorf("error checking if userId exists: %s", err)
+		return feeds, fmt.Errorf("in getAllUserFeeds(): error checking if userId exists: %s", err)
 	}
 	if !exists {
-		return feeds, fmt.Errorf("error user with id %v does not exist in database", userId)
+		return feeds, fmt.Errorf("in getAllUserFeeds(): error user with id %v does not exist in database", userId)
 	}
 
 	feeds, err = s.db.GetAllUserFeeds(ctx, userId)
 	if err != nil {
-		return feeds, fmt.Errorf("error retrieving feeds for user with id %v", userId)
+		return feeds, fmt.Errorf("in getAllUserFeeds(): error retrieving feeds for user with id %v", userId)
 	}
 
 	return feeds, nil
@@ -288,8 +288,28 @@ func getAllFeedChannels(s *state, feedId int32) ([]string, error) {
 	return channels, nil
 }
 
+// Retrieves all uploadIds associated with the provided channelIds
+func getAllUploadIds(s *state, channelIds []string) ([]string, error) {
+	uploadIds := []string{}
+
+	for _, channelId := range channelIds {
+		uploadId, err := s.db.GetUploadId(context.Background(), channelId)
+		if err != nil {
+			log.Println(fmt.Errorf("in getAllFeedChannels(): error retrieiving uploadId: %s", err))
+			continue
+		}
+		uploadIds = append(uploadIds, uploadId)
+	}
+
+	if len(uploadIds) < 1 {
+		return []string{}, fmt.Errorf("in getAllFeedChannels(): error retrieving uploadIds, not a single Id retrieved")
+	}
+
+	return uploadIds, nil
+}
+
 // Adds the channel to feed, calling createFeedChannel
-func addChannelToFeed(s *state, userId, feedId int32, channelHandle string) error {
+func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
 	var channelId, uploadId string
 	var exists bool
 	ctx := context.Background()
@@ -303,10 +323,10 @@ func addChannelToFeed(s *state, userId, feedId int32, channelHandle string) erro
 		} else if !exists {
 			return fmt.Errorf("in addChannelToFeed(): channelHandle did not match any youtube channel")
 		}
+	} else {
+		channelId = channelIdUploadId.ChannelID
+		uploadId = channelIdUploadId.ChannelUploadID
 	}
-
-	channelId = channelIdUploadId.ChannelID
-	uploadId = channelIdUploadId.ChannelUploadID
 
 	err = createFeedChannel(s, feedId, channelId, uploadId, channelHandle)
 	if err != nil {

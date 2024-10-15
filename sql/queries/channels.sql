@@ -20,6 +20,10 @@ WHERE channel_id = $1;
 SELECT channel_id, channel_upload_id FROM channels
 WHERE channel_handle = $1;
 
+-- name: GetUploadId :one
+SELECT channel_upload_id FROM channels
+WHERE channel_id = $1;
+
 -- name: ContainsChannelInDB :one
 SELECT EXISTS (
     SELECT 1 FROM channels

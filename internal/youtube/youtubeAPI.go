@@ -178,6 +178,8 @@ func getFeedVideos(limit int64, uploadIds []string) ([]video, []error) {
 	}()
 
 	waitGroupFinished.Wait()
+	sortByDate(allVideos)
+
 	return allVideos, allErrors
 }
 
@@ -200,17 +202,33 @@ func videosAsStrings(videos []video) []string {
 }
 
 // Returns slice of JSON representation of videos
-func videosAsJSON(videos []video) ([][]byte, error) {
-	videosJSON := [][]byte{}
+func videosAsJSON(videos []video) ([]byte, error) {
 
-	for _, v := range videos {
-		vJSON, err := json.Marshal(v)
-		if err != nil {
-			newErr := fmt.Errorf("in videosAsJSON(): error Marshaling video: \n%s", err)
-			return videosJSON, newErr
+	videosJSON, err := json.Marshal(videos)
+	if err != nil {
+		newErr := fmt.Errorf("in videosAsJSON(): error Marshaling videos: %s", err)
+		return []byte{}, newErr
+	}
+
+	return videosJSON, nil
+}
+
+// Retrieves videos for the feed in JSON format
+func GetFeedVideosJSON(limit int64, uploadIds []string) ([]byte, error) {
+	videos, errs := getFeedVideos(limit, uploadIds)
+	if len(errs) > 0 {
+		log.Println("in getFeedVideosJSON(): errors:")
+		for _, err := range errs {
+			log.Println(err)
 		}
+	}
+	if len(videos) < 1 {
+		return []byte{}, fmt.Errorf("in GetFeedVideosJSON(): error, no videos retrieved")
+	}
 
-		videosJSON = append(videosJSON, vJSON)
+	videosJSON, err := videosAsJSON(videos)
+	if err != nil {
+		return []byte{}, fmt.Errorf("in GetFeedVideosJSON(): error marshaling videos as JSON: %v", err)
 	}
 
 	return videosJSON, nil

@@ -9,11 +9,13 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
+	"github.com/luke-mayer/youtube-custom-feeds/internal/youtube"
 	"google.golang.org/api/idtoken"
 )
 
 const PORT = ":8080"
 const PREFIX = "/api/v1"
+const VIDEO_LIMIT = 10
 
 type StatusCodes struct {
 	Success       int
@@ -52,7 +54,7 @@ var statusCodeMessages = map[int]string{
 }
 
 type parameters interface {
-	idTokenParams | feedParams
+	idTokenParams | feedParams | addChannelParams
 	getIdToken() string
 }
 
@@ -66,9 +68,9 @@ type feedParams struct {
 }
 
 type addChannelParams struct {
-	IdToken     string `json:"idToken"`
-	FeedName    string `json:"feedName"`
-	ChannelName string `json:"channelName"`
+	IdToken       string `json:"idToken"`
+	FeedName      string `json:"feedName"`
+	ChannelHandle string `json:"channelHandle"`
 }
 
 func (p idTokenParams) getIdToken() string {
@@ -76,6 +78,10 @@ func (p idTokenParams) getIdToken() string {
 }
 
 func (p feedParams) getIdToken() string {
+	return p.IdToken
+}
+
+func (p addChannelParams) getIdToken() string {
 	return p.IdToken
 }
 
@@ -149,6 +155,10 @@ func validateIdToken(token string) (string, error) {
 
 	return googleId, nil
 }
+
+// ------------------------ //
+//		API ENDPOINTS		//
+// ------------------------ //
 
 // POST - Checks if user is in the database. If not, creates a new user
 func login(w http.ResponseWriter, r *http.Request) {
@@ -225,23 +235,85 @@ func createFeedPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST - adds the youtube channel to the user's indicated field
-func addChannelPOST(w http.ResponseWriter, req *http.Request) {
+func addChannelPOST(w http.ResponseWriter, r *http.Request) {
+	params := addChannelParams{}
+
+	s, userId, statusCode, err := unpackRequest(&params, r)
+	if err != nil {
+		log.Printf("in addChannelPOST(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponse(w, statusCodeMessages[statusCode], statusCode)
+	}
+
+	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	if err != nil {
+		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	err = addChannelToFeed(s, feedId, params.ChannelHandle)
+	if err != nil {
+		log.Printf("in addChannelPOST(): error adding channel to feed: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := fmt.Sprintf("Channel - %s - successfully added to feed - %s", params.ChannelHandle, params.FeedName)
+	writeResponse(w, message, statusCodes.Success)
+}
+
+// GET - retrieves youtube videos for the provided
+func getVideosGET(w http.ResponseWriter, r *http.Request) {
+	params := feedParams{}
+
+	s, userId, statusCode, err := unpackRequest(&params, r)
+	if err != nil {
+		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponse(w, statusCodeMessages[statusCode], statusCode)
+	}
+
+	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	if err != nil {
+		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	channelIds, err := getAllFeedChannels(s, feedId)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feed channel Ids: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	uploadIds, err := getAllUploadIds(s, channelIds)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feed upload Ids: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	videos, err := youtube.GetFeedVideosJSON(VIDEO_LIMIT, uploadIds)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving videos as JSON: %s", err)
+		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCodes.Success)
+	w.Write(videos)
+}
+
+func renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func getVideosGET(w http.ResponseWriter, req *http.Request) {
+func deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func renameFeedPATCH(w http.ResponseWriter, req *http.Request) {
-
-}
-
-func deleteFeedDELETE(w http.ResponseWriter, req *http.Request) {
-
-}
-
-func deleteChannelDELETE(w http.ResponseWriter, req *http.Request) {
+func deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 
 }
 
@@ -249,9 +321,9 @@ func main() {
 	router := mux.NewRouter()
 	api := router.PathPrefix(PREFIX).Subrouter()
 	api.HandleFunc("/login", login).Methods(http.MethodPost)
-	api.HandleFunc("/create/feed", createFeedPOST).Methods(http.MethodPost)
-	api.HandleFunc("", addChannelPOST).Methods(http.MethodPost)
-	api.HandleFunc("", getVideosGET).Methods(http.MethodGet)
+	api.HandleFunc("/feed", createFeedPOST).Methods(http.MethodPost)
+	api.HandleFunc("/channel", addChannelPOST).Methods(http.MethodPost)
+	api.HandleFunc("/videos", getVideosGET).Methods(http.MethodGet)
 	api.HandleFunc("", renameFeedPATCH).Methods(http.MethodPatch)
 	api.HandleFunc("", deleteFeedDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("", deleteChannelDELETE).Methods(http.MethodDelete)
