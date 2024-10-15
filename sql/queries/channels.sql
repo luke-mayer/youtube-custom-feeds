@@ -16,8 +16,8 @@ WHERE channel_id = $1;
 DELETE FROM channels
 WHERE channel_id = $1;
 
--- name: GetChannelIdByHandle :one
-SELECT channel_id FROM channels
+-- name: GetChannelIdUploadIdByHandle :one
+SELECT channel_id, channel_upload_id FROM channels
 WHERE channel_handle = $1;
 
 -- name: ContainsChannelInDB :one

@@ -182,26 +182,27 @@ func deleteFeed(s *state, userId int32, feedName string) error {
 }
 
 // Creates channel
-func createChannel(s *state, channelId, channelName string) error {
+func createChannel(s *state, channelId, uploadId, channelHandle string) error {
 	channelUrl := youtube.GetChannelURL(channelId)
 
 	params := database.InsertChannelParams{
-		ChannelID:  channelId,
-		ChannelUrl: channelUrl,
-		Name:       channelName,
+		ChannelID:       channelId,
+		ChannelUploadID: uploadId,
+		ChannelUrl:      channelUrl,
+		ChannelHandle:   channelHandle,
 	}
 
 	channel, err := s.db.InsertChannel(context.Background(), params)
 	if err != nil {
-		return fmt.Errorf("error inserting channel \"%s\" into database: %s", channelName, err)
+		return fmt.Errorf("error inserting channel \"%s\" into database: %s", channelHandle, err)
 	}
 
-	log.Printf("Successfully inserted channel \"%s\" in database", channel.Name)
+	log.Printf("Successfully inserted channel \"%s\" in database", channel.ChannelHandle)
 	return nil
 }
 
 // Creates feed channel
-func createFeedChannel(s *state, feedId int32, channelId, channelName string) error {
+func createFeedChannel(s *state, feedId int32, channelId, uploadId, channelHandle string) error {
 	containsParams := database.ContainsFeedChannelParams{
 		FeedID:    feedId,
 		ChannelID: channelId,
@@ -220,7 +221,7 @@ func createFeedChannel(s *state, feedId int32, channelId, channelName string) er
 		return err
 	}
 	if !exists {
-		err = createChannel(s, channelId, channelName)
+		err = createChannel(s, channelId, uploadId, channelHandle)
 		if err != nil {
 			return err
 		}
@@ -288,23 +289,26 @@ func getAllFeedChannels(s *state, feedId int32) ([]string, error) {
 }
 
 // Adds the channel to feed, calling createFeedChannel
-func addChannelToFeed(s *state, userId, feedId int32, channelName string) error {
-	var channelId string
+func addChannelToFeed(s *state, userId, feedId int32, channelHandle string) error {
+	var channelId, uploadId string
 	var exists bool
 	ctx := context.Background()
 
-	channelId, err := s.db.GetChannelByName(ctx, channelName)
+	channelIdUploadId, err := s.db.GetChannelIdUploadIdByHandle(ctx, channelHandle)
 	if err != nil {
 		log.Printf("in addChannelToFeed(): error getting channelId, channel name may not exist in db yet: %s", err)
-		exists, channelId, err = youtube.GetChannelId(channelName)
+		exists, channelId, uploadId, err = youtube.GetChannelIdUploadId(channelHandle)
 		if err != nil {
 			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId: %s", err)
 		} else if !exists {
-			return fmt.Errorf("in addChannelToFeed(): channelName did not match any youtube channel")
+			return fmt.Errorf("in addChannelToFeed(): channelHandle did not match any youtube channel")
 		}
 	}
 
-	err = createFeedChannel(s, feedId, channelId, channelName)
+	channelId = channelIdUploadId.ChannelID
+	uploadId = channelIdUploadId.ChannelUploadID
+
+	err = createFeedChannel(s, feedId, channelId, uploadId, channelHandle)
 	if err != nil {
 		return fmt.Errorf("in addChannelToFeed(): error creating feed channel: %s", err)
 	}
