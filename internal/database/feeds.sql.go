@@ -8,8 +8,6 @@ package database
 import (
 	"context"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const containsFeed = `-- name: ContainsFeed :one
@@ -20,7 +18,7 @@ SELECT EXISTS (
 `
 
 type ContainsFeedParams struct {
-	UserID uuid.UUID
+	UserID int32
 	Name   string
 }
 
@@ -46,7 +44,7 @@ type CreateFeedParams struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Name      string
-	UserID    uuid.UUID
+	UserID    int32
 }
 
 func (q *Queries) CreateFeed(ctx context.Context, arg CreateFeedParams) (Feed, error) {
@@ -73,7 +71,7 @@ WHERE user_id = $1
 RETURNING id, created_at, updated_at, name, user_id
 `
 
-func (q *Queries) DeleteAllFeeds(ctx context.Context, userID uuid.UUID) error {
+func (q *Queries) DeleteAllFeeds(ctx context.Context, userID int32) error {
 	_, err := q.db.ExecContext(ctx, deleteAllFeeds, userID)
 	return err
 }
@@ -85,7 +83,7 @@ RETURNING id, created_at, updated_at, name, user_id
 `
 
 type DeleteFeedParams struct {
-	UserID uuid.UUID
+	UserID int32
 	Name   string
 }
 
@@ -104,7 +102,7 @@ type GetAllUserFeedsRow struct {
 	Name string
 }
 
-func (q *Queries) GetAllUserFeeds(ctx context.Context, userID uuid.UUID) ([]GetAllUserFeedsRow, error) {
+func (q *Queries) GetAllUserFeeds(ctx context.Context, userID int32) ([]GetAllUserFeedsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getAllUserFeeds, userID)
 	if err != nil {
 		return nil, err
@@ -133,7 +131,7 @@ WHERE user_id = $1 AND name = $2
 `
 
 type GetFeedIdParams struct {
-	UserID uuid.UUID
+	UserID int32
 	Name   string
 }
 
@@ -152,7 +150,7 @@ RETURNING id, created_at, updated_at, name, user_id
 `
 
 type UpdateNameParams struct {
-	UserID    uuid.UUID
+	UserID    int32
 	Name      string
 	UpdatedAt time.Time
 }

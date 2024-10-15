@@ -8,19 +8,17 @@ package database
 import (
 	"context"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-const containsUser = `-- name: ContainsUser :one
+const containsUserByGoogleId = `-- name: ContainsUserByGoogleId :one
 SELECT EXISTS (
     SELECT 1 FROM users
-    WHERE name = $1
+    WHERE google_id = $1
 )
 `
 
-func (q *Queries) ContainsUser(ctx context.Context, name string) (bool, error) {
-	row := q.db.QueryRowContext(ctx, containsUser, name)
+func (q *Queries) ContainsUserByGoogleId(ctx context.Context, googleID string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, containsUserByGoogleId, googleID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -33,7 +31,7 @@ SELECT EXISTS (
 )
 `
 
-func (q *Queries) ContainsUserById(ctx context.Context, id uuid.UUID) (bool, error) {
+func (q *Queries) ContainsUserById(ctx context.Context, id int32) (bool, error) {
 	row := q.db.QueryRowContext(ctx, containsUserById, id)
 	var exists bool
 	err := row.Scan(&exists)
@@ -41,76 +39,47 @@ func (q *Queries) ContainsUserById(ctx context.Context, id uuid.UUID) (bool, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, created_at, updated_at, name)
+INSERT INTO users (google_id, created_at, updated_at)
 VALUES (
     $1,
     $2,
-    $3,
-    $4
+    $3
 )
-RETURNING id, created_at, updated_at, name
+RETURNING id
 `
 
 type CreateUserParams struct {
-	ID        uuid.UUID
+	GoogleID  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Name      string
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser,
-		arg.ID,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-		arg.Name,
-	)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int32, error) {
+	row := q.db.QueryRowContext(ctx, createUser, arg.GoogleID, arg.CreatedAt, arg.UpdatedAt)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }
 
-const deleteUserID = `-- name: DeleteUserID :one
+const deleteUserById = `-- name: DeleteUserById :one
 DELETE FROM users WHERE id = $1
-RETURNING id, created_at, updated_at, name
+RETURNING id, google_id, created_at, updated_at
 `
 
-func (q *Queries) DeleteUserID(ctx context.Context, id uuid.UUID) (User, error) {
-	row := q.db.QueryRowContext(ctx, deleteUserID, id)
+func (q *Queries) DeleteUserById(ctx context.Context, id int32) (User, error) {
+	row := q.db.QueryRowContext(ctx, deleteUserById, id)
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.GoogleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
-}
-
-const deleteUserName = `-- name: DeleteUserName :one
-DELETE FROM users WHERE name = $1
-RETURNING id, created_at, updated_at, name
-`
-
-func (q *Queries) DeleteUserName(ctx context.Context, name string) (User, error) {
-	row := q.db.QueryRowContext(ctx, deleteUserName, name)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
 	)
 	return i, err
 }
 
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT id, created_at, updated_at, name FROM users
+SELECT id, google_id, created_at, updated_at FROM users
 `
 
 func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
@@ -124,9 +93,9 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 		var i User
 		if err := rows.Scan(
 			&i.ID,
+			&i.GoogleID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -141,61 +110,31 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
-const getUserId = `-- name: GetUserId :one
-SELECT id, created_at, updated_at, name FROM users
+const getUserById = `-- name: GetUserById :one
+SELECT id, google_id, created_at, updated_at FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserId(ctx context.Context, id uuid.UUID) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserId, id)
+func (q *Queries) GetUserById(ctx context.Context, id int32) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserById, id)
 	var i User
 	err := row.Scan(
 		&i.ID,
+		&i.GoogleID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Name,
 	)
 	return i, err
 }
 
-const getUserName = `-- name: GetUserName :one
-SELECT id, created_at, updated_at, name FROM users
-WHERE name = $1
+const getUserIdByGoogleId = `-- name: GetUserIdByGoogleId :one
+SELECT id FROM users
+WHERE google_id = $1
 `
 
-func (q *Queries) GetUserName(ctx context.Context, name string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserName, name)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
-}
-
-const updateUserName = `-- name: UpdateUserName :one
-UPDATE users
-SET name = $2, updated_at = $3
-WHERE id = $1
-RETURNING id, created_at, updated_at, name
-`
-
-type UpdateUserNameParams struct {
-	ID        uuid.UUID
-	Name      string
-	UpdatedAt time.Time
-}
-
-func (q *Queries) UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, updateUserName, arg.ID, arg.Name, arg.UpdatedAt)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
+func (q *Queries) GetUserIdByGoogleId(ctx context.Context, googleID string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getUserIdByGoogleId, googleID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }

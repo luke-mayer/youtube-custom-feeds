@@ -6,8 +6,6 @@ package database
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Channel struct {
@@ -21,7 +19,7 @@ type Feed struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Name      string
-	UserID    uuid.UUID
+	UserID    int32
 }
 
 type FeedsChannel struct {
@@ -30,8 +28,8 @@ type FeedsChannel struct {
 }
 
 type User struct {
-	ID        uuid.UUID
+	ID        int32
+	GoogleID  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Name      string
 }

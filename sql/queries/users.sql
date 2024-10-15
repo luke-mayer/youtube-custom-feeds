@@ -1,25 +1,24 @@
 -- name: CreateUser :one
-INSERT INTO users (id, created_at, updated_at, name)
+INSERT INTO users (google_id, created_at, updated_at)
 VALUES (
     $1,
     $2,
-    $3,
-    $4
+    $3
 )
-RETURNING *;
+RETURNING id;
 
--- name: GetUserName :one
-SELECT * FROM users
-WHERE name = $1;
+-- name: GetUserIdByGoogleId :one
+SELECT id FROM users
+WHERE google_id = $1;
 
--- name: GetUserId :one
+-- name: GetUserById :one
 SELECT * FROM users
 WHERE id = $1;
 
--- name: ContainsUser :one
+-- name: ContainsUserByGoogleId :one
 SELECT EXISTS (
     SELECT 1 FROM users
-    WHERE name = $1
+    WHERE google_id = $1
 );
 
 -- name: ContainsUserById :one
@@ -28,18 +27,8 @@ SELECT EXISTS (
     WHERE id = $1
 );
 
--- name: DeleteUserName :one
-DELETE FROM users WHERE name = $1
-RETURNING *;
-
--- name: DeleteUserID :one
+-- name: DeleteUserById :one
 DELETE FROM users WHERE id = $1
-RETURNING *;
-
--- name: UpdateUserName :one
-UPDATE users
-SET name = $2, updated_at = $3
-WHERE id = $1
 RETURNING *;
 
 -- name: GetAllUsers :many

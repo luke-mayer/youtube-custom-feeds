@@ -2,16 +2,30 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
-	"os"
 )
 
 type Config struct {
-	DBUrl           string `json:"db_url"`
-	CurrentUserName string `json:"current_user_name"`
+	DBUrl string `json:"db_url"`
 }
+
+func Read() (Config, error) {
+	var config Config
+
+	configString, err := GetSecret(ConfigSecretName)
+	if err != nil {
+		return Config{}, fmt.Errorf("in Read(): error retrieving config file from secrets: %s", err)
+	}
+
+	err = json.Unmarshal([]byte(configString), &config)
+	if err != nil {
+		return Config{}, fmt.Errorf("in Read(): error unmarshaling config: %s", err)
+	}
+
+	return config, nil
+}
+
+/*
 
 const configFileName = "/.youtube-custom-feeds-config.json"
 
@@ -70,11 +84,4 @@ func Read() Config {
 	return configStruct
 }
 
-// Sets the CurrentUserName of the Config struct
-// to the provided userName.
-func (cfg Config) SetUser(userName string) {
-	cfg.CurrentUserName = userName
-	if err := write(cfg); err != nil {
-		log.Fatalf("Error in SetUser(): %s", err)
-	}
-}
+*/
