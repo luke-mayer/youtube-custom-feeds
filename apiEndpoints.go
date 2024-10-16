@@ -27,6 +27,7 @@ type StatusCodes struct {
 	ErrUserId     int
 	ErrMarshaling int
 	ErrFeed       int
+	ErrFeedExists int
 }
 
 var statusCodes = StatusCodes{
@@ -39,6 +40,7 @@ var statusCodes = StatusCodes{
 	ErrUserId:     502,
 	ErrMarshaling: 503,
 	ErrFeed:       504,
+	ErrFeedExists: 505,
 }
 
 var statusCodeMessages = map[int]string{
@@ -47,10 +49,11 @@ var statusCodeMessages = map[int]string{
 	statusCodes.ErrDecoding:   "error: decoding parameters",
 	statusCodes.ErrIdToken:    "error: idToken issue",
 	statusCodes.ErrServer:     "error: server issue",
-	statusCodes.ErrState:      "error: initializing state",
+	statusCodes.ErrState:      "error: issue initializing state",
 	statusCodes.ErrUserId:     "error: retrieving user id",
 	statusCodes.ErrMarshaling: "error: marshaling JSON",
 	statusCodes.ErrFeed:       "error: creating feed",
+	statusCodes.ErrFeedExists: "error: feed with provided name already exists for specified user",
 }
 
 type parameters interface {
@@ -115,8 +118,8 @@ func unpackRequest[T parameters](params *T, r *http.Request) (*state, int32, int
 	return s, userId, statusCodes.Success, nil
 }
 
-// Used to write error messages to response
-func writeResponse(w http.ResponseWriter, message string, statusCode int) {
+// Used to write messages (such as errors) to response
+func writeResponseMessage(w http.ResponseWriter, message string, statusCode int) {
 	type returnVals struct {
 		Message string `json:"message"`
 	}
@@ -124,9 +127,14 @@ func writeResponse(w http.ResponseWriter, message string, statusCode int) {
 		Message: message,
 	}
 
+	writeResponse(w, resBody, statusCode)
+}
+
+// Used to write to response body
+func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
 	data, err := json.Marshal(resBody)
 	if err != nil {
-		log.Printf("in writeResponse(): error marshaling JSON: %s", err)
+		log.Printf("in writeResponseData(): error marshaling JSON: %s", err)
 		w.WriteHeader(statusCodes.ErrMarshaling)
 		return
 	}
@@ -169,7 +177,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrDecoding], err)
 		log.Println(errMessage)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrDecoding], statusCodes.ErrDecoding)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrDecoding], statusCodes.ErrDecoding)
 		return
 	}
 
@@ -177,7 +185,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrState], err)
 		log.Println(errMessage)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrState], statusCodes.ErrState)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrState], statusCodes.ErrState)
 		return
 	}
 
@@ -185,7 +193,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrIdToken], err)
 		log.Println(errMessage)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrIdToken], statusCodes.ErrIdToken)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrIdToken], statusCodes.ErrIdToken)
 		return
 	}
 
@@ -193,7 +201,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
 		log.Println(errMessage)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
@@ -204,13 +212,13 @@ func login(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
 			log.Println(errMessage)
-			writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+			writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 			return
 		}
 		message = "user did not exist in database - created new user"
 	}
 
-	writeResponse(w, message, statusCodes.Success)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
 // POST - Creates a new feed
@@ -220,18 +228,23 @@ func createFeedPOST(w http.ResponseWriter, r *http.Request) {
 	s, userId, statusCode, err := unpackRequest(&params, r)
 	if err != nil {
 		log.Printf("in createFeedPOST(): %s: %s", statusCodeMessages[statusCode], err)
-		writeResponse(w, statusCodeMessages[statusCode], statusCode)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 	}
 
-	_, err = createFeed(s, userId, params.FeedName)
+	contains, _, err := createFeed(s, userId, params.FeedName)
 	if err != nil {
 		log.Printf("in createFeedPOST(): error creating feed: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+	if contains {
+		message := fmt.Sprintf("Feed with name - %s - already exists for specified user", params.FeedName)
+		writeResponseMessage(w, message, statusCodes.ErrFeedExists)
 		return
 	}
 
 	message := fmt.Sprintf("Feed - %s - successfully created", params.FeedName)
-	writeResponse(w, message, statusCodes.Success)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
 // POST - adds the youtube channel to the user's indicated field
@@ -241,62 +254,136 @@ func addChannelPOST(w http.ResponseWriter, r *http.Request) {
 	s, userId, statusCode, err := unpackRequest(&params, r)
 	if err != nil {
 		log.Printf("in addChannelPOST(): %s: %s", statusCodeMessages[statusCode], err)
-		writeResponse(w, statusCodeMessages[statusCode], statusCode)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 	}
 
 	feedId, err := getUserFeedId(s, userId, params.FeedName)
 	if err != nil {
 		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
 		return
 	}
 
 	err = addChannelToFeed(s, feedId, params.ChannelHandle)
 	if err != nil {
 		log.Printf("in addChannelPOST(): error adding channel to feed: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
 	message := fmt.Sprintf("Channel - %s - successfully added to feed - %s", params.ChannelHandle, params.FeedName)
-	writeResponse(w, message, statusCodes.Success)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// GET - retrieves youtube videos for the provided
-func getVideosGET(w http.ResponseWriter, r *http.Request) {
+// GET - retrieves the user's feed names
+func getFeedsGET(w http.ResponseWriter, r *http.Request) {
+	params := idTokenParams{}
+
+	s, userId, statusCode, err := unpackRequest(&params, r)
+	if err != nil {
+		log.Printf("in getFeedsGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+	}
+
+	feedNames, err := getAllUserFeedNames(s, userId)
+	if err != nil {
+		log.Printf("in getFeedsGET(): error retrieving feedNames: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := "Successfully retrieved feedNames"
+	type returnVals struct {
+		Message   string   `json:"message"`
+		FeedNames []string `json:"feedNames"`
+	}
+	resBody := returnVals{
+		Message:   message,
+		FeedNames: feedNames,
+	}
+
+	writeResponse(w, resBody, statusCodes.Success)
+}
+
+// GET - retrieves the channel handles belonging to the user's specified feed
+func getChannelsGET(w http.ResponseWriter, r *http.Request) {
 	params := feedParams{}
 
 	s, userId, statusCode, err := unpackRequest(&params, r)
 	if err != nil {
 		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
-		writeResponse(w, statusCodeMessages[statusCode], statusCode)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 	}
 
 	feedId, err := getUserFeedId(s, userId, params.FeedName)
 	if err != nil {
 		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
 		return
 	}
 
 	channelIds, err := getAllFeedChannels(s, feedId)
 	if err != nil {
 		log.Printf("in getVideosGET(): error retrieving feed channel Ids: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	channelHandles, err := getAllChannelHandles(s, channelIds)
+	if err != nil {
+		log.Printf("in getChannelsGET(): error retrieving handles: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := "Successfully retrieved channel handles"
+	type returnVals struct {
+		Message        string   `json:"message"`
+		ChannelHandles []string `json:"channelHandles"`
+	}
+	resBody := returnVals{
+		Message:        message,
+		ChannelHandles: channelHandles,
+	}
+
+	writeResponse(w, resBody, statusCodes.Success)
+}
+
+// GET - retrieves youtube videos for the provided feed
+func getVideosGET(w http.ResponseWriter, r *http.Request) {
+	params := feedParams{}
+
+	s, userId, statusCode, err := unpackRequest(&params, r)
+	if err != nil {
+		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+	}
+
+	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	if err != nil {
+		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	channelIds, err := getAllFeedChannels(s, feedId)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feed channel Ids: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
 	uploadIds, err := getAllUploadIds(s, channelIds)
 	if err != nil {
 		log.Printf("in getVideosGET(): error retrieving feed upload Ids: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
 	videos, err := youtube.GetFeedVideosJSON(VIDEO_LIMIT, uploadIds)
 	if err != nil {
 		log.Printf("in getVideosGET(): error retrieving videos as JSON: %s", err)
-		writeResponse(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
@@ -323,6 +410,8 @@ func main() {
 	api.HandleFunc("/login", login).Methods(http.MethodPost)
 	api.HandleFunc("/feed", createFeedPOST).Methods(http.MethodPost)
 	api.HandleFunc("/channel", addChannelPOST).Methods(http.MethodPost)
+	api.HandleFunc("/feeds", getFeedsGET).Methods(http.MethodGet)
+	api.HandleFunc("/channels", getChannelsGET).Methods(http.MethodGet)
 	api.HandleFunc("/videos", getVideosGET).Methods(http.MethodGet)
 	api.HandleFunc("", renameFeedPATCH).Methods(http.MethodPatch)
 	api.HandleFunc("", deleteFeedDELETE).Methods(http.MethodDelete)

@@ -13,7 +13,6 @@ type Channel struct {
 	ChannelUploadID string
 	ChannelHandle   string
 	ChannelUrl      string
-	Name            string
 }
 
 type Feed struct {

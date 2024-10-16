@@ -33,6 +33,18 @@ func (q *Queries) DeleteChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
+const getChannelHandle = `-- name: GetChannelHandle :one
+SELECT channel_handle FROM channels
+WHERE channel_id = $1
+`
+
+func (q *Queries) GetChannelHandle(ctx context.Context, channelID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getChannelHandle, channelID)
+	var channel_handle string
+	err := row.Scan(&channel_handle)
+	return channel_handle, err
+}
+
 const getChannelHandleUploadId = `-- name: GetChannelHandleUploadId :one
 SELECT channel_handle, channel_upload_id FROM channels
 WHERE channel_id = $1
@@ -87,7 +99,7 @@ VALUES(
     $3,
     $4
 )
-RETURNING channel_id, channel_upload_id, channel_handle, channel_url, name
+RETURNING channel_id, channel_upload_id, channel_handle, channel_url
 `
 
 type InsertChannelParams struct {
@@ -110,7 +122,6 @@ func (q *Queries) InsertChannel(ctx context.Context, arg InsertChannelParams) (C
 		&i.ChannelUploadID,
 		&i.ChannelHandle,
 		&i.ChannelUrl,
-		&i.Name,
 	)
 	return i, err
 }

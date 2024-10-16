@@ -12,6 +12,10 @@ RETURNING *;
 SELECT channel_handle, channel_upload_id FROM channels
 WHERE channel_id = $1;
 
+-- name: GetChannelHandle :one
+SELECT channel_handle FROM channels
+WHERE channel_id = $1;
+
 -- name: DeleteChannel :exec
 DELETE FROM channels
 WHERE channel_id = $1;

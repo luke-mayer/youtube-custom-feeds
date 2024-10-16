@@ -69,9 +69,22 @@ func registerUser(s *state, googleId string) error {
 //************************************//
 
 // Creates a custom feed for a user
-func createFeed(s *state, userId int32, feedName string) (database.Feed, error) {
+func createFeed(s *state, userId int32, feedName string) (bool, database.Feed, error) {
 	feed := database.Feed{}
 	ctx := context.Background()
+
+	containsParams := database.ContainsFeedParams{
+		UserID: userId,
+		Name:   feedName,
+	}
+
+	contains, err := s.db.ContainsFeed(ctx, containsParams)
+	if err != nil {
+		return false, feed, fmt.Errorf("in createFeed(): error checking if user already has a feed with provided name: %s")
+	}
+	if contains {
+		return true, feed, nil
+	}
 
 	params := database.CreateFeedParams{
 		CreatedAt: time.Now(),
@@ -80,14 +93,14 @@ func createFeed(s *state, userId int32, feedName string) (database.Feed, error) 
 		UserID:    userId,
 	}
 
-	feed, err := s.db.CreateFeed(ctx, params)
+	feed, err = s.db.CreateFeed(ctx, params)
 	if err != nil {
-		return feed, fmt.Errorf("error creating feed \"%s\" for user with id %v", feedName, userId)
+		return false, feed, fmt.Errorf("error creating feed \"%s\" for user with id %v", feedName, userId)
 	}
 
 	log.Printf("Successfully created feed with - feed_id: %v, feedName: %v, for user with userId: %v",
 		feed.ID, feed.Name, feed.UserID)
-	return feed, nil
+	return false, feed, nil
 }
 
 // Retrieves all feeds belonging to the specified user
@@ -109,6 +122,26 @@ func getAllUserFeeds(s *state, userId int32) ([]database.GetAllUserFeedsRow, err
 	}
 
 	return feeds, nil
+}
+
+// Retrieves all feedNames belonging to the specified user
+func getAllUserFeedNames(s *state, userId int32) ([]string, error) {
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error user with id %v does not exist in database", userId)
+	}
+
+	feedNames, err := s.db.GetAllUserFeedNames(ctx, userId)
+	if err != nil {
+		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error retrieving feedNames for user with id %v", userId)
+	}
+
+	return feedNames, nil
 }
 
 // Retrieves feed id for the feed withe the provided name, belonging to the specified user
@@ -295,14 +328,34 @@ func getAllUploadIds(s *state, channelIds []string) ([]string, error) {
 	for _, channelId := range channelIds {
 		uploadId, err := s.db.GetUploadId(context.Background(), channelId)
 		if err != nil {
-			log.Println(fmt.Errorf("in getAllFeedChannels(): error retrieiving uploadId: %s", err))
+			log.Println(fmt.Errorf("in getAllUploadIds(): error retrieiving uploadId: %s", err))
 			continue
 		}
 		uploadIds = append(uploadIds, uploadId)
 	}
 
 	if len(uploadIds) < 1 {
-		return []string{}, fmt.Errorf("in getAllFeedChannels(): error retrieving uploadIds, not a single Id retrieved")
+		return []string{}, fmt.Errorf("in getAllUploadIds(): error retrieving uploadIds, not a single Id retrieved")
+	}
+
+	return uploadIds, nil
+}
+
+// Retrieves all handles associated with the provided channelIds
+func getAllChannelHandles(s *state, channelIds []string) ([]string, error) {
+	uploadIds := []string{}
+
+	for _, channelId := range channelIds {
+		uploadId, err := s.db.GetChannelHandle(context.Background(), channelId)
+		if err != nil {
+			log.Println(fmt.Errorf("in getAllChannelHandles(): error retrieiving handle: %s", err))
+			continue
+		}
+		uploadIds = append(uploadIds, uploadId)
+	}
+
+	if len(uploadIds) < 1 {
+		return []string{}, fmt.Errorf("in getAllChannelHandles(): error retrieving handles, not a single handle retrieved")
 	}
 
 	return uploadIds, nil
@@ -314,9 +367,11 @@ func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
 	var exists bool
 	ctx := context.Background()
 
-	channelIdUploadId, err := s.db.GetChannelIdUploadIdByHandle(ctx, channelHandle)
+	contains, err := s.db.ContainsChannelInDB(ctx, channelHandle)
 	if err != nil {
-		log.Printf("in addChannelToFeed(): error getting channelId, channel name may not exist in db yet: %s", err)
+		return fmt.Errorf("in addChannelToFeed(): error checking if DB contains channel: %v", err)
+	}
+	if !contains {
 		exists, channelId, uploadId, err = youtube.GetChannelIdUploadId(channelHandle)
 		if err != nil {
 			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId: %s", err)
@@ -324,6 +379,10 @@ func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
 			return fmt.Errorf("in addChannelToFeed(): channelHandle did not match any youtube channel")
 		}
 	} else {
+		channelIdUploadId, err := s.db.GetChannelIdUploadIdByHandle(ctx, channelHandle)
+		if err != nil {
+			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId and uploadId: %s", err)
+		}
 		channelId = channelIdUploadId.ChannelID
 		uploadId = channelIdUploadId.ChannelUploadID
 	}

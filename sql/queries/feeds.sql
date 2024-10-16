@@ -12,6 +12,10 @@ RETURNING *;
 SELECT id, name FROM feeds
 WHERE user_id = $1;
 
+-- name: GetAllUserFeedNames :many
+SELECT name FROM feeds
+WHERE user_id = $1;
+
 -- name: GetFeedId :one
 SELECT id FROM feeds
 WHERE user_id = $1 AND name = $2;

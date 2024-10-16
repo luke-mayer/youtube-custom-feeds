@@ -92,6 +92,34 @@ func (q *Queries) DeleteFeed(ctx context.Context, arg DeleteFeedParams) error {
 	return err
 }
 
+const getAllUserFeedNames = `-- name: GetAllUserFeedNames :many
+SELECT name FROM feeds
+WHERE user_id = $1
+`
+
+func (q *Queries) GetAllUserFeedNames(ctx context.Context, userID int32) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getAllUserFeedNames, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllUserFeeds = `-- name: GetAllUserFeeds :many
 SELECT id, name FROM feeds
 WHERE user_id = $1

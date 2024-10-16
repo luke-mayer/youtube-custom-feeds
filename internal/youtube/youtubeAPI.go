@@ -203,8 +203,15 @@ func videosAsStrings(videos []video) []string {
 
 // Returns slice of JSON representation of videos
 func videosAsJSON(videos []video) ([]byte, error) {
+	type videoStruct struct {
+		Videos []video `json:"videos"`
+	}
 
-	videosJSON, err := json.Marshal(videos)
+	vidStruct := videoStruct{
+		Videos: videos,
+	}
+
+	videosJSON, err := json.Marshal(vidStruct)
 	if err != nil {
 		newErr := fmt.Errorf("in videosAsJSON(): error Marshaling videos: %s", err)
 		return []byte{}, newErr
