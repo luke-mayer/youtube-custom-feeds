@@ -285,7 +285,7 @@ func deleteChannel(s *state, channelId string) error {
 	return nil
 }
 
-// Deletes feed channel and deletes channel if references in feeds_channels db
+// Deletes feed channel and deletes channel if no remaining references in feeds_channels db
 func deleteFeedChannel(s *state, feedId int32, channelId string) error {
 	ctx := context.Background()
 
@@ -361,6 +361,18 @@ func getAllChannelHandles(s *state, channelIds []string) ([]string, error) {
 	return uploadIds, nil
 }
 
+// Retrieves the channelId associated with the given handle
+func getChannelId(s *state, channelHandle string) (string, error) {
+	ctx := context.Background()
+
+	channelId, err := s.db.GetChannelIdByHandle(ctx, channelHandle)
+	if err != nil {
+		return "", fmt.Errorf("in getChannelId(): error retrieving channelId for channelHandle<%s>: %s", channelHandle, err)
+	}
+
+	return channelId, nil
+}
+
 // Adds the channel to feed, calling createFeedChannel
 func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
 	var channelId, uploadId string
@@ -390,6 +402,22 @@ func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
 	err = createFeedChannel(s, feedId, channelId, uploadId, channelHandle)
 	if err != nil {
 		return fmt.Errorf("in addChannelToFeed(): error creating feed channel: %s", err)
+	}
+
+	return nil
+}
+
+// Updates the name of the specified feed belonging to the specified user
+func updateFeedName(s *state, feedId int32, newFeedName string) error {
+	params := database.UpdateFeedNameQueryParams{
+		ID:        feedId,
+		Name:      newFeedName,
+		UpdatedAt: time.Now(),
+	}
+
+	err := s.db.UpdateFeedNameQuery(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("in updateFeedName(): error updating the feed name: %s", err)
 	}
 
 	return nil

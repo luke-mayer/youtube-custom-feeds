@@ -22,13 +22,11 @@ WHERE user_id = $1 AND name = $2;
 
 -- name: DeleteAllFeeds :exec
 DELETE FROM feeds
-WHERE user_id = $1
-RETURNING *;
+WHERE user_id = $1;
 
 -- name: DeleteFeed :exec
 DELETE FROM feeds
-WHERE user_id = $1 AND name = $2
-RETURNING *;
+WHERE user_id = $1 AND name = $2;
 
 -- name: ContainsFeed :one
 SELECT EXISTS (
@@ -36,8 +34,7 @@ SELECT EXISTS (
     WHERE user_id = $1 AND name = $2
 );
 
--- name: UpdateName :one
+-- name: UpdateFeedNameQuery :exec
 UPDATE feeds
 SET name = $2, updated_at = $3
-WHERE user_id = $1
-RETURNING *;
+WHERE id = $1;

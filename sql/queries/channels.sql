@@ -16,6 +16,10 @@ WHERE channel_id = $1;
 SELECT channel_handle FROM channels
 WHERE channel_id = $1;
 
+-- name: GetChannelIdByHandle :one
+SELECT channel_id FROM channels
+WHERE channel_handle = $1;
+
 -- name: DeleteChannel :exec
 DELETE FROM channels
 WHERE channel_id = $1;

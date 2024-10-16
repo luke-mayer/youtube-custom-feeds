@@ -68,7 +68,6 @@ func (q *Queries) CreateFeed(ctx context.Context, arg CreateFeedParams) (Feed, e
 const deleteAllFeeds = `-- name: DeleteAllFeeds :exec
 DELETE FROM feeds
 WHERE user_id = $1
-RETURNING id, created_at, updated_at, name, user_id
 `
 
 func (q *Queries) DeleteAllFeeds(ctx context.Context, userID int32) error {
@@ -79,7 +78,6 @@ func (q *Queries) DeleteAllFeeds(ctx context.Context, userID int32) error {
 const deleteFeed = `-- name: DeleteFeed :exec
 DELETE FROM feeds
 WHERE user_id = $1 AND name = $2
-RETURNING id, created_at, updated_at, name, user_id
 `
 
 type DeleteFeedParams struct {
@@ -170,28 +168,19 @@ func (q *Queries) GetFeedId(ctx context.Context, arg GetFeedIdParams) (int32, er
 	return id, err
 }
 
-const updateName = `-- name: UpdateName :one
+const updateFeedNameQuery = `-- name: UpdateFeedNameQuery :exec
 UPDATE feeds
 SET name = $2, updated_at = $3
-WHERE user_id = $1
-RETURNING id, created_at, updated_at, name, user_id
+WHERE id = $1
 `
 
-type UpdateNameParams struct {
-	UserID    int32
+type UpdateFeedNameQueryParams struct {
+	ID        int32
 	Name      string
 	UpdatedAt time.Time
 }
 
-func (q *Queries) UpdateName(ctx context.Context, arg UpdateNameParams) (Feed, error) {
-	row := q.db.QueryRowContext(ctx, updateName, arg.UserID, arg.Name, arg.UpdatedAt)
-	var i Feed
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-		&i.UserID,
-	)
-	return i, err
+func (q *Queries) UpdateFeedNameQuery(ctx context.Context, arg UpdateFeedNameQueryParams) error {
+	_, err := q.db.ExecContext(ctx, updateFeedNameQuery, arg.ID, arg.Name, arg.UpdatedAt)
+	return err
 }

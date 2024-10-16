@@ -62,6 +62,18 @@ func (q *Queries) GetChannelHandleUploadId(ctx context.Context, channelID string
 	return i, err
 }
 
+const getChannelIdByHandle = `-- name: GetChannelIdByHandle :one
+SELECT channel_id FROM channels
+WHERE channel_handle = $1
+`
+
+func (q *Queries) GetChannelIdByHandle(ctx context.Context, channelHandle string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getChannelIdByHandle, channelHandle)
+	var channel_id string
+	err := row.Scan(&channel_id)
+	return channel_id, err
+}
+
 const getChannelIdUploadIdByHandle = `-- name: GetChannelIdUploadIdByHandle :one
 SELECT channel_id, channel_upload_id FROM channels
 WHERE channel_handle = $1
