@@ -436,9 +436,9 @@ func renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// IMPORTANT
-// NEED TO DELETE ALL FEED CHANNELS ASSOCIATED WITH THIS FEED
-// IMPORTANT!!!!!
+// DELETE - deletes the provided feed for the specific user
+//
+//	deletes all related feed-channels as a side effect
 func deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
 	params := feedParams{}
 	// NEED TO HAVE DELETE ALL FEED CHANNELS ASSOCIATED WITH THIS FEED
@@ -460,6 +460,7 @@ func deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
+// DELETE - deletes the provided channel for the specific user and feed
 func deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 	params := feedChannelParams{}
 

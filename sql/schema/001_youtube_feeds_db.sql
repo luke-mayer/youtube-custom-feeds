@@ -14,7 +14,8 @@ CREATE TABLE feeds (
     user_id INTEGER NOT NULL,
     CONSTRAINT fk_user_id
         FOREIGN KEY(user_id)
-            REFERENCES users(id),
+            REFERENCES users(id)
+                ON DELETE CASCADE,
     CONSTRAINT unique_name_user
         UNIQUE(name, user_id)
 );

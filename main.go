@@ -189,7 +189,8 @@ func deleteAllFeeds(s *state, userId int32) error {
 	return nil
 }
 
-// Deletes feed with given name belonging to the specified user
+// Deletes feed with given name belonging to the specified user.
+// Deletes all feed-channels as a consequence
 func deleteFeed(s *state, userId int32, feedName string) error {
 	ctx := context.Background()
 
@@ -201,6 +202,16 @@ func deleteFeed(s *state, userId int32, feedName string) error {
 		return fmt.Errorf("error user with id %v does not exist in database", userId)
 	}
 
+	feedId, err := getUserFeedId(s, userId, feedName)
+	if err != nil {
+		return fmt.Errorf("in deleteFeed(): error retrieving feedId: %s", err)
+	}
+
+	err = deleteAllFeedChannels(s, feedId)
+	if err != nil {
+		return fmt.Errorf("in deleteFeed(): error deleting all feed-channels: %s", err)
+	}
+
 	params := database.DeleteFeedParams{
 		UserID: userId,
 		Name:   feedName,
@@ -208,7 +219,7 @@ func deleteFeed(s *state, userId int32, feedName string) error {
 
 	err = s.db.DeleteFeed(ctx, params)
 	if err != nil {
-		return fmt.Errorf("error deleting feed: %s", err)
+		return fmt.Errorf("in deleteFeed(): error deleting feed: %s", err)
 	}
 
 	return nil
@@ -305,6 +316,23 @@ func deleteFeedChannel(s *state, feedId int32, channelId string) error {
 	}
 	if !exists { // deleting channel from channels if no more references in feeds_channels
 		return deleteChannel(s, channelId)
+	}
+
+	return nil
+}
+
+// Deletes all channels in the provided feed
+func deleteAllFeedChannels(s *state, feedId int32) error {
+	channelIds, err := getAllFeedChannels(s, feedId)
+	if err != nil {
+		return fmt.Errorf("in deleteAllFeedChannels(): error retrieving all channelIds in feed: %s", err)
+	}
+
+	for _, channelId := range channelIds {
+		err := deleteFeedChannel(s, feedId, channelId)
+		if err != nil {
+			return fmt.Errorf("in deleteAllFeedChannels(): error deleing channel-feed: %s", err)
+		}
 	}
 
 	return nil
