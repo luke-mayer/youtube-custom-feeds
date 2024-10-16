@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
@@ -45,12 +46,9 @@ func GetClientId() (string, error) {
 
 	var clientStruct ClientSecrets
 
-	clientString, err := GetSecret(ClientIdSecretName)
-	if err != nil {
-		return "", fmt.Errorf("in GetClientId(): error retrieving client secrets from secrets: %s", err)
-	}
+	clientString := os.Getenv("YOUTUBE_CUSTOM_FEEDS_CLIENT_ID")
 
-	err = json.Unmarshal([]byte(clientString), &clientStruct)
+	err := json.Unmarshal([]byte(clientString), &clientStruct)
 	if err != nil {
 		return "", fmt.Errorf("in GetClientId(): error unmarshaling clientString: %s", err)
 	}
