@@ -80,7 +80,7 @@ func createFeed(s *state, userId int32, feedName string) (bool, database.Feed, e
 
 	contains, err := s.db.ContainsFeed(ctx, containsParams)
 	if err != nil {
-		return false, feed, fmt.Errorf("in createFeed(): error checking if user already has a feed with provided name: %s")
+		return false, feed, fmt.Errorf("in createFeed(): error checking if user already has a feed with provided name: %s", err)
 	}
 	if contains {
 		return true, feed, nil

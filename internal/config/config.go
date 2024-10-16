@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
 type Config struct {
@@ -12,12 +13,9 @@ type Config struct {
 func Read() (Config, error) {
 	var config Config
 
-	configString, err := GetSecret(ConfigSecretName)
-	if err != nil {
-		return Config{}, fmt.Errorf("in Read(): error retrieving config file from secrets: %s", err)
-	}
+	configString := os.Getenv("YOUTUBE_CUSTOM_FEEDS_CONFIG")
 
-	err = json.Unmarshal([]byte(configString), &config)
+	err := json.Unmarshal([]byte(configString), &config)
 	if err != nil {
 		return Config{}, fmt.Errorf("in Read(): error unmarshaling config: %s", err)
 	}
