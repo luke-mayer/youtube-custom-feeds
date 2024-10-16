@@ -1,19 +1,16 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-
-	secretmanager "cloud.google.com/go/secretmanager/apiv1"
-	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 )
 
 const ConfigSecretName = "projects/865842770127/secrets/youtube-custom-feeds-config/versions/latest"
 const ClientIdSecretName = "projects/865842770127/secrets/youtube-custom-feeds-client-id-json/versions/latest"
 const ApiKeySecretName = "projects/865842770127/secrets/youtube-custom-feeds-api-key/versions/latest"
 
+/*
 // Used to retireve secrets from google secret manager
 func GetSecret(secretName string) (string, error) {
 	ctx := context.Background()
@@ -37,6 +34,7 @@ func GetSecret(secretName string) (string, error) {
 
 	return secretData, nil
 }
+*/
 
 func GetClientId() (string, error) {
 
