@@ -163,7 +163,7 @@ func validateIdToken(token string) (string, error) {
 
 	payload, err := idtoken.Validate(context.Background(), token, clientId)
 	if err != nil {
-		return "", fmt.Errorf("in validateIdToken(): error validating token: %s", err)
+		return "", fmt.Errorf("in validateIdToken(): error validating token: clientId<%s>: %s", clientId, err)
 	}
 
 	googleId, ok := payload.Claims["sub"].(string)
