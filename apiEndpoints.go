@@ -182,6 +182,9 @@ func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
 	w.WriteHeader(statusCode)
 	w.Write(data)
 }
@@ -527,6 +530,14 @@ func deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
+// OPTIONS - preflight for cors
+func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Use "*" or your specific domain
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.WriteHeader(http.StatusOK)
+}
+
 func main() {
 	router := mux.NewRouter()
 	api := router.PathPrefix(PREFIX).Subrouter()
@@ -539,6 +550,7 @@ func main() {
 	api.HandleFunc("/feed/rename", renameFeedPATCH).Methods(http.MethodPatch)
 	api.HandleFunc("/feed", deleteFeedDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/channel", deleteChannelDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
 
 	log.Fatal(http.ListenAndServe(PORT, router))
 }
