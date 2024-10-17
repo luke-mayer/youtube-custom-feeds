@@ -321,9 +321,8 @@ func addChannelPOST(w http.ResponseWriter, r *http.Request) {
 
 // GET - retrieves the user's feed names
 func getFeedsGET(w http.ResponseWriter, r *http.Request) {
-	params := idTokenParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	s, userId, statusCode, err := unpackGetRequest(r)
 	if err != nil {
 		log.Printf("in getFeedsGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
