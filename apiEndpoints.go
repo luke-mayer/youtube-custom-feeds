@@ -212,16 +212,14 @@ func validateIdToken(token string) (string, error) {
 
 // POST - Checks if user is in the database. If not, creates a new user
 func login(w http.ResponseWriter, r *http.Request) {
-	params := idTokenParams{}
-
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&params)
-	if err != nil {
-		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrDecoding], err)
-		log.Println(errMessage)
-		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrDecoding], statusCodes.ErrDecoding)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		log.Println("in login(): error retireving idToken")
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrIdToken], statusCodes.ErrIdToken)
 		return
 	}
+
+	idToken := strings.TrimPrefix(authHeader, "Bearer ")
 
 	s, err := getState()
 	if err != nil {
@@ -231,7 +229,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	googleId, err := validateIdToken(params.getIdToken())
+	googleId, err := validateIdToken(idToken)
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrIdToken], err)
 		log.Println(errMessage)
