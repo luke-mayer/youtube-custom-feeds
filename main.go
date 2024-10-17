@@ -33,6 +33,13 @@ func getState() (*state, error) {
 	if err != nil {
 		return &state{}, fmt.Errorf("in getState(): error connecting to database: %s", err)
 	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Printf("Error pinging database: %v", err)
+		return &state{}, fmt.Errorf("in getState(): error pinging database: %v", err)
+	}
+
 	s.db = database.New(db)
 
 	return &s, nil
