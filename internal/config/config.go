@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 )
@@ -23,10 +22,7 @@ func Read() (Config, error) {
 	configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
 		socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
 
-	err := json.Unmarshal([]byte(configString), &config)
-	if err != nil {
-		return Config{}, fmt.Errorf("in Read(): error unmarshaling config: %s", err)
-	}
+	config.DBUrl = configString
 
 	return config, nil
 }
