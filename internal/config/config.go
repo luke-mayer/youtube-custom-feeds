@@ -13,7 +13,15 @@ type Config struct {
 func Read() (Config, error) {
 	var config Config
 
-	configString := os.Getenv("YOUTUBE_CUSTOM_FEEDS_CONFIG")
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASS")
+	dbName := os.Getenv("DB_NAME")
+	instanceConnectionName := os.Getenv("INSTANCE_CONNECTION_NAME")
+
+	socketDir := "/cloudsql"
+
+	configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
+		socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
 
 	err := json.Unmarshal([]byte(configString), &config)
 	if err != nil {
