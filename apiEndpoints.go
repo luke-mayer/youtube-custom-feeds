@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
@@ -122,6 +123,37 @@ func unpackRequest[T parameters](params *T, r *http.Request) (*state, int32, int
 	userId, err := getUserId(s, googleId)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackRequest(): error retrieving userId: %s", err)
+		return &state{}, 0, statusCodes.ErrUserId, newErr
+	}
+
+	return s, userId, statusCodes.Success, nil
+}
+
+func unpackGetRequest(r *http.Request) (*state, int32, int, error) {
+
+	s, err := getState()
+	if err != nil {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retreiving state: %s", err)
+		return &state{}, 0, statusCodes.ErrState, newErr
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retireving idToken")
+		return &state{}, 0, statusCodes.ErrIdToken, newErr
+	}
+
+	idToken := strings.TrimPrefix(authHeader, "Bearer ")
+
+	googleId, err := validateIdToken(idToken)
+	if err != nil {
+		newErr := fmt.Errorf("in unpackGetRequest(): error validating idToken: %s", err)
+		return &state{}, 0, statusCodes.ErrIdToken, newErr
+	}
+
+	userId, err := getUserId(s, googleId)
+	if err != nil {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving userId: %s", err)
 		return &state{}, 0, statusCodes.ErrUserId, newErr
 	}
 
@@ -320,25 +352,26 @@ func getFeedsGET(w http.ResponseWriter, r *http.Request) {
 
 // GET - retrieves the channel handles belonging to the user's specified feed
 func getChannelsGET(w http.ResponseWriter, r *http.Request) {
-	params := feedParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	s, userId, statusCode, err := unpackGetRequest(r)
 	if err != nil {
-		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
+		log.Printf("in getChannelsGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 		return
 	}
 
-	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	feedName := r.URL.Query().Get("feedName")
+
+	feedId, err := getUserFeedId(s, userId, feedName)
 	if err != nil {
-		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
+		log.Printf("in getChannelsGET(): error retrieving feedId: %s", err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
 		return
 	}
 
 	channelIds, err := getAllFeedChannels(s, feedId)
 	if err != nil {
-		log.Printf("in getVideosGET(): error retrieving feed channel Ids: %s", err)
+		log.Printf("in getChannelsGET(): error retrieving feed channel Ids: %s", err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
@@ -365,16 +398,17 @@ func getChannelsGET(w http.ResponseWriter, r *http.Request) {
 
 // GET - retrieves youtube videos for the provided feed
 func getVideosGET(w http.ResponseWriter, r *http.Request) {
-	params := feedParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	s, userId, statusCode, err := unpackGetRequest(r)
 	if err != nil {
 		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 		return
 	}
 
-	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	feedName := r.URL.Query().Get("feedName")
+
+	feedId, err := getUserFeedId(s, userId, feedName)
 	if err != nil {
 		log.Printf("in getVideosGET(): error retrieving feedId: %s", err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
