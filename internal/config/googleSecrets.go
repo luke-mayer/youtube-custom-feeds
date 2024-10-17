@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 )
 
@@ -46,7 +45,6 @@ func GetClientId() (string, error) {
 	var clientStruct ClientSecrets
 
 	clientString := os.Getenv("YOUTUBE_CUSTOM_FEEDS_CLIENT_ID")
-	log.Println(clientString)
 
 	err := json.Unmarshal([]byte(clientString), &clientStruct)
 	if err != nil {
