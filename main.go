@@ -45,9 +45,9 @@ func getState() (*state, error) {
 	return &s, nil
 }
 
-// Retrieves user id using a google oauth2 id
-func getUserId(s *state, googleId string) (int32, error) {
-	userId, err := s.db.GetUserIdByGoogleId(context.Background(), googleId)
+// Retrieves user id using a firebase user id
+func getUserId(s *state, firebaseId string) (int32, error) {
+	userId, err := s.db.GetUserIdByFirebaseId(context.Background(), firebaseId)
 	if err != nil {
 		return 0, fmt.Errorf("in getUserId(): error retrieving userId: %s", err)
 	}
@@ -56,9 +56,9 @@ func getUserId(s *state, googleId string) (int32, error) {
 }
 
 // Creates a new user in the database
-func registerUser(s *state, googleId string) error {
+func registerUser(s *state, firebaseId string) error {
 	params := database.CreateUserParams{
-		GoogleID:  googleId,
+		FbUserID:  firebaseId,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

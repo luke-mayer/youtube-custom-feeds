@@ -10,15 +10,15 @@ import (
 	"time"
 )
 
-const containsUserByGoogleId = `-- name: ContainsUserByGoogleId :one
+const containsUserByFirebaseId = `-- name: ContainsUserByFirebaseId :one
 SELECT EXISTS (
     SELECT 1 FROM users
-    WHERE google_id = $1
+    WHERE fb_user_id = $1
 )
 `
 
-func (q *Queries) ContainsUserByGoogleId(ctx context.Context, googleID string) (bool, error) {
-	row := q.db.QueryRowContext(ctx, containsUserByGoogleId, googleID)
+func (q *Queries) ContainsUserByFirebaseId(ctx context.Context, fbUserID string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, containsUserByFirebaseId, fbUserID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -39,7 +39,7 @@ func (q *Queries) ContainsUserById(ctx context.Context, id int32) (bool, error) 
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (google_id, created_at, updated_at)
+INSERT INTO users (fb_user_id, created_at, updated_at)
 VALUES (
     $1,
     $2,
@@ -49,13 +49,13 @@ RETURNING id
 `
 
 type CreateUserParams struct {
-	GoogleID  string
+	FbUserID  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int32, error) {
-	row := q.db.QueryRowContext(ctx, createUser, arg.GoogleID, arg.CreatedAt, arg.UpdatedAt)
+	row := q.db.QueryRowContext(ctx, createUser, arg.FbUserID, arg.CreatedAt, arg.UpdatedAt)
 	var id int32
 	err := row.Scan(&id)
 	return id, err
@@ -63,7 +63,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int32, 
 
 const deleteUserById = `-- name: DeleteUserById :one
 DELETE FROM users WHERE id = $1
-RETURNING id, google_id, created_at, updated_at
+RETURNING id, fb_user_id, created_at, updated_at
 `
 
 func (q *Queries) DeleteUserById(ctx context.Context, id int32) (User, error) {
@@ -71,7 +71,7 @@ func (q *Queries) DeleteUserById(ctx context.Context, id int32) (User, error) {
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.GoogleID,
+		&i.FbUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -79,7 +79,7 @@ func (q *Queries) DeleteUserById(ctx context.Context, id int32) (User, error) {
 }
 
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT id, google_id, created_at, updated_at FROM users
+SELECT id, fb_user_id, created_at, updated_at FROM users
 `
 
 func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
@@ -93,7 +93,7 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 		var i User
 		if err := rows.Scan(
 			&i.ID,
-			&i.GoogleID,
+			&i.FbUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -111,7 +111,7 @@ func (q *Queries) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, google_id, created_at, updated_at FROM users
+SELECT id, fb_user_id, created_at, updated_at FROM users
 WHERE id = $1
 `
 
@@ -120,20 +120,20 @@ func (q *Queries) GetUserById(ctx context.Context, id int32) (User, error) {
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.GoogleID,
+		&i.FbUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getUserIdByGoogleId = `-- name: GetUserIdByGoogleId :one
+const getUserIdByFirebaseId = `-- name: GetUserIdByFirebaseId :one
 SELECT id FROM users
-WHERE google_id = $1
+WHERE fb_user_id = $1
 `
 
-func (q *Queries) GetUserIdByGoogleId(ctx context.Context, googleID string) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getUserIdByGoogleId, googleID)
+func (q *Queries) GetUserIdByFirebaseId(ctx context.Context, fbUserID string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getUserIdByFirebaseId, fbUserID)
 	var id int32
 	err := row.Scan(&id)
 	return id, err

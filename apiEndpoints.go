@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
@@ -22,7 +21,7 @@ type StatusCodes struct {
 	Success       int
 	ErrRequest    int
 	ErrDecoding   int
-	ErrIdToken    int
+	ErrFirebaseId int
 	ErrServer     int
 	ErrState      int
 	ErrUserId     int
@@ -35,7 +34,7 @@ var statusCodes = StatusCodes{
 	Success:       200,
 	ErrRequest:    400,
 	ErrDecoding:   401,
-	ErrIdToken:    402,
+	ErrFirebaseId: 402,
 	ErrServer:     500,
 	ErrState:      501,
 	ErrUserId:     502,
@@ -48,7 +47,7 @@ var statusCodeMessages = map[int]string{
 	statusCodes.Success:       "successful completion",
 	statusCodes.ErrRequest:    "error: invalid request",
 	statusCodes.ErrDecoding:   "error: decoding parameters",
-	statusCodes.ErrIdToken:    "error: idToken issue",
+	statusCodes.ErrFirebaseId: "error: firebase id issue",
 	statusCodes.ErrServer:     "error: server issue",
 	statusCodes.ErrState:      "error: issue initializing state",
 	statusCodes.ErrUserId:     "error: retrieving user id",
@@ -58,45 +57,45 @@ var statusCodeMessages = map[int]string{
 }
 
 type parameters interface {
-	idTokenParams | feedParams | feedChannelParams | updateFeedParams
-	getIdToken() string
+	firebaseIdParams | feedParams | feedChannelParams | updateFeedParams
+	getFirebaseId() string
 }
 
-type idTokenParams struct {
-	IdToken string `json:"idToken"`
+type firebaseIdParams struct {
+	FirebaseId string `json:"firebaseId"`
 }
 
 type feedParams struct {
-	IdToken  string `json:"idToken"`
-	FeedName string `json:"feedName"`
+	FirebaseId string `json:"firebaseId"`
+	FeedName   string `json:"feedName"`
 }
 
 type feedChannelParams struct {
-	IdToken       string `json:"idToken"`
+	FirebaseId    string `json:"firebaseId"`
 	FeedName      string `json:"feedName"`
 	ChannelHandle string `json:"channelHandle"`
 }
 
 type updateFeedParams struct {
-	IdToken     string `json:"idToken"`
+	FirebaseId  string `json:"firebaseId"`
 	FeedName    string `json:"feedName"`
 	NewFeedName string `json:"newFeedName"`
 }
 
-func (p idTokenParams) getIdToken() string {
-	return p.IdToken
+func (p firebaseIdParams) getFirebaseId() string {
+	return p.FirebaseId
 }
 
-func (p feedParams) getIdToken() string {
-	return p.IdToken
+func (p feedParams) getFirebaseId() string {
+	return p.FirebaseId
 }
 
-func (p feedChannelParams) getIdToken() string {
-	return p.IdToken
+func (p feedChannelParams) getFirebaseId() string {
+	return p.FirebaseId
 }
 
-func (p updateFeedParams) getIdToken() string {
-	return p.IdToken
+func (p updateFeedParams) getFirebaseId() string {
+	return p.FirebaseId
 }
 
 // Used to unpack parameters from request and initialize the state and userId, returns statusCode if error
@@ -114,13 +113,13 @@ func unpackRequest[T parameters](params *T, r *http.Request) (*state, int32, int
 		return &state{}, 0, statusCodes.ErrState, newErr
 	}
 
-	googleId, err := validateIdToken((*params).getIdToken())
+	firebaseId, err := validateFirebaseId((*params).getFirebaseId())
 	if err != nil {
-		newErr := fmt.Errorf("in unpackRequest(): error validating idToken: %s", err)
-		return &state{}, 0, statusCodes.ErrIdToken, newErr
+		newErr := fmt.Errorf("in unpackRequest(): error validating firebaseId: %s", err)
+		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
 	}
 
-	userId, err := getUserId(s, googleId)
+	userId, err := getUserId(s, firebaseId)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackRequest(): error retrieving userId: %s", err)
 		return &state{}, 0, statusCodes.ErrUserId, newErr
@@ -137,21 +136,13 @@ func unpackGetRequest(r *http.Request) (*state, int32, int, error) {
 		return &state{}, 0, statusCodes.ErrState, newErr
 	}
 
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		newErr := fmt.Errorf("in unpackGetRequest(): error retireving idToken")
-		return &state{}, 0, statusCodes.ErrIdToken, newErr
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retireving firebaseId")
+		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
 	}
 
-	idToken := strings.TrimPrefix(authHeader, "Bearer ")
-
-	googleId, err := validateIdToken(idToken)
-	if err != nil {
-		newErr := fmt.Errorf("in unpackGetRequest(): error validating idToken: %s", err)
-		return &state{}, 0, statusCodes.ErrIdToken, newErr
-	}
-
-	userId, err := getUserId(s, googleId)
+	userId, err := getUserId(s, firebaseId)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving userId: %s", err)
 		return &state{}, 0, statusCodes.ErrUserId, newErr
@@ -189,24 +180,24 @@ func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
 	w.Write(data)
 }
 
-// validates OAuth2 ID token and returns googleId (sum field)
-func validateIdToken(token string) (string, error) {
+// validates OAuth2 ID token and returns firebaseId (sum field)
+func validateFirebaseId(token string) (string, error) {
 	clientId, err := config.GetClientId()
 	if err != nil {
-		return "", fmt.Errorf("in validateIdToken(): error retrieiving client id: %s", err)
+		return "", fmt.Errorf("in validateFirebaseId(): error retrieiving client id: %s", err)
 	}
 
 	payload, err := idtoken.Validate(context.Background(), token, clientId)
 	if err != nil {
-		return "", fmt.Errorf("in validateIdToken(): error validating token: %s", err)
+		return "", fmt.Errorf("in validateFirebaseId(): error validating token: %s", err)
 	}
 
-	googleId, ok := payload.Claims["sub"].(string)
+	firebaseId, ok := payload.Claims["sub"].(string)
 	if !ok {
-		return "", fmt.Errorf("in validateToken(): error extracting googleId from token: %s", err)
+		return "", fmt.Errorf("in validateToken(): error extracting firebaseId from token: %s", err)
 	}
 
-	return googleId, nil
+	return firebaseId, nil
 }
 
 // ------------------------ //
@@ -215,14 +206,13 @@ func validateIdToken(token string) (string, error) {
 
 // POST - Checks if user is in the database. If not, creates a new user
 func login(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		log.Println("in login(): error retireving idToken")
-		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrIdToken], statusCodes.ErrIdToken)
+
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		log.Println("in login(): error retireving firebaseId")
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFirebaseId], statusCodes.ErrFirebaseId)
 		return
 	}
-
-	idToken := strings.TrimPrefix(authHeader, "Bearer ")
 
 	s, err := getState()
 	if err != nil {
@@ -232,15 +222,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	googleId, err := validateIdToken(idToken)
-	if err != nil {
-		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrIdToken], err)
-		log.Println(errMessage)
-		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrIdToken], statusCodes.ErrIdToken)
-		return
-	}
-
-	exists, err := s.db.ContainsUserByGoogleId(context.Background(), googleId)
+	exists, err := s.db.ContainsUserByFirebaseId(context.Background(), firebaseId)
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
 		log.Println(errMessage)
@@ -251,7 +233,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	message := statusCodeMessages[statusCodes.Success]
 
 	if !exists {
-		err := registerUser(s, googleId)
+		err := registerUser(s, firebaseId)
 		if err != nil {
 			errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
 			log.Println(errMessage)

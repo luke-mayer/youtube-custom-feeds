@@ -1,5 +1,5 @@
 -- name: CreateUser :one
-INSERT INTO users (google_id, created_at, updated_at)
+INSERT INTO users (fb_user_id, created_at, updated_at)
 VALUES (
     $1,
     $2,
@@ -7,18 +7,18 @@ VALUES (
 )
 RETURNING id;
 
--- name: GetUserIdByGoogleId :one
+-- name: GetUserIdByFirebaseId :one
 SELECT id FROM users
-WHERE google_id = $1;
+WHERE fb_user_id = $1;
 
 -- name: GetUserById :one
 SELECT * FROM users
 WHERE id = $1;
 
--- name: ContainsUserByGoogleId :one
+-- name: ContainsUserByFirebaseId :one
 SELECT EXISTS (
     SELECT 1 FROM users
-    WHERE google_id = $1
+    WHERE fb_user_id = $1
 );
 
 -- name: ContainsUserById :one

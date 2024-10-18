@@ -1,4 +1,6 @@
-package youtube
+package main
+
+/*
 
 import (
 	"context"
@@ -66,3 +68,4 @@ func fetchRSSFeed(ctx context.Context, rssUrl string) (*rssFeed, error) {
 
 	return feed, nil
 }
+*/

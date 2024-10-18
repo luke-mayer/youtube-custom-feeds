@@ -30,7 +30,7 @@ type FeedsChannel struct {
 
 type User struct {
 	ID        int32
-	GoogleID  string
+	FbUserID  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
-    google_id VARCHAR(255) UNIQUE NOT NULL,
+    fb_user_id VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
