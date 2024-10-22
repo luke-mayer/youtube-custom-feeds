@@ -369,9 +369,11 @@ func getAllUploadIds(s *state, channelIds []string) ([]string, error) {
 		uploadIds = append(uploadIds, uploadId)
 	}
 
-	if len(uploadIds) < 1 {
-		return []string{}, fmt.Errorf("in getAllUploadIds(): error retrieving uploadIds, not a single Id retrieved")
-	}
+	/*
+		if len(uploadIds) < 1 {
+			return []string{}, fmt.Errorf("in getAllUploadIds(): error retrieving uploadIds, not a single Id retrieved")
+		}
+	*/
 
 	return uploadIds, nil
 }
@@ -387,10 +389,6 @@ func getAllChannelHandles(s *state, channelIds []string) ([]string, error) {
 			continue
 		}
 		uploadIds = append(uploadIds, uploadId)
-	}
-
-	if len(uploadIds) < 1 {
-		return []string{}, fmt.Errorf("in getAllChannelHandles(): error retrieving handles, not a single handle retrieved")
 	}
 
 	return uploadIds, nil
