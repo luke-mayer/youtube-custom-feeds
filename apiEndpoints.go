@@ -8,9 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/youtube"
-	"google.golang.org/api/idtoken"
 )
 
 const PORT = ":8080"
@@ -62,7 +60,7 @@ type parameters interface {
 }
 
 type firebaseIdParams struct {
-	FirebaseId string `json:"firebaseId"`
+	FirebaseId string `json:"Firebase-Id"`
 }
 
 type feedParams struct {
@@ -113,9 +111,9 @@ func unpackRequest[T parameters](params *T, r *http.Request) (*state, int32, int
 		return &state{}, 0, statusCodes.ErrState, newErr
 	}
 
-	firebaseId, err := validateFirebaseId((*params).getFirebaseId())
-	if err != nil {
-		newErr := fmt.Errorf("in unpackRequest(): error validating firebaseId: %s", err)
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		newErr := fmt.Errorf("in unpackRequest(): error retrieving firebaseId")
 		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
 	}
 
@@ -138,7 +136,7 @@ func unpackGetRequest(r *http.Request) (*state, int32, int, error) {
 
 	firebaseId := r.Header.Get("Firebase-ID")
 	if firebaseId == "" {
-		newErr := fmt.Errorf("in unpackGetRequest(): error retireving firebaseId")
+		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving firebaseId")
 		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
 	}
 
@@ -180,6 +178,7 @@ func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
 	w.Write(data)
 }
 
+/*
 // validates OAuth2 ID token and returns firebaseId (sum field)
 func validateFirebaseId(token string) (string, error) {
 	clientId, err := config.GetClientId()
@@ -199,6 +198,7 @@ func validateFirebaseId(token string) (string, error) {
 
 	return firebaseId, nil
 }
+*/
 
 // ------------------------ //
 //		API ENDPOINTS		//
@@ -514,7 +514,7 @@ func deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 
 // OPTIONS - preflight for cors
 func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*") // Use "*" or your specific domain
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Replace with specific domain later probably
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.WriteHeader(http.StatusOK)
@@ -529,7 +529,7 @@ func main() {
 	api.HandleFunc("/feeds", getFeedsGET).Methods(http.MethodGet)
 	api.HandleFunc("/channels", getChannelsGET).Methods(http.MethodGet)
 	api.HandleFunc("/videos", getVideosGET).Methods(http.MethodGet)
-	api.HandleFunc("/feed/rename", renameFeedPATCH).Methods(http.MethodPatch)
+	api.HandleFunc("/feed", renameFeedPATCH).Methods(http.MethodPatch)
 	api.HandleFunc("/feed", deleteFeedDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/channel", deleteChannelDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
