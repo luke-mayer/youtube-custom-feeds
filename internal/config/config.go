@@ -20,14 +20,18 @@ func Read() (Config, error) {
 	// dbPort := "5432"
 
 	socketDir := "/cloudsql"
-
-	configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
-		socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
-
 	/*
-		configString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			dbHost, dbPort, dbUser, dbPassword, dbName)
+		configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
+			socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
+
+		/*
+			configString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+				dbHost, dbPort, dbUser, dbPassword, dbName)
 	*/
+
+	configString := fmt.Sprintf("%s:%s@unix(%s/%s)/%s?parseTime=true",
+		dbUser, dbPassword, socketDir, instanceConnectionName, dbName)
+
 	config.DBUrl = configString
 
 	return config, nil
