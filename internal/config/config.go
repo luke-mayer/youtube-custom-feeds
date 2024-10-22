@@ -15,13 +15,19 @@ func Read() (Config, error) {
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASS")
 	dbName := os.Getenv("DB_NAME")
-	instanceConnectionName := os.Getenv("INSTANCE_CONNECTION_NAME")
+	//instanceConnectionName := os.Getenv("INSTANCE_CONNECTION_NAME")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := "5432"
 
-	socketDir := "/cloudsql"
+	//socketDir := "/cloudsql"
+	/*
+		configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
+			socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
 
-	configString := fmt.Sprintf("host=%s/%s user=%s password=%s dbname=%s sslmode=disable",
-		socketDir, instanceConnectionName, dbUser, dbPassword, dbName)
+	*/
 
+	configString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
 	config.DBUrl = configString
 
 	return config, nil
