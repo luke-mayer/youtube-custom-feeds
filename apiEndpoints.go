@@ -439,45 +439,46 @@ func (s *state) renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
 //
 //	deletes all related feed-channels as a side effect
 func (s *state) deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
-	params := feedParams{}
-	// NEED TO HAVE DELETE ALL FEED CHANNELS ASSOCIATED WITH THIS FEED
-	userId, statusCode, err := unpackRequest(&params, r, s)
+	feedName := r.URL.Query().Get("feedName")
+
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
 		log.Printf("in deleteFeedDELETE(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 		return
 	}
 
-	err = deleteFeed(s, userId, params.FeedName)
+	err = deleteFeed(s, userId, feedName)
 	if err != nil {
-		log.Printf("in deleteFeedDELETE(): error deleting feed<%s>: %s", params.FeedName, err)
+		log.Printf("in deleteFeedDELETE(): error deleting feed<%s>: %s", feedName, err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
 		return
 	}
 
-	message := fmt.Sprintf("Successfully deleted feed with name - %s", params.FeedName)
+	message := fmt.Sprintf("Successfully deleted feed with name - %s", feedName)
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
 // DELETE - deletes the provided channel for the specific user and feed
 func (s *state) deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
-	params := feedChannelParams{}
+	feedName := r.URL.Query().Get("feedName")
+	channelHandle := r.URL.Query().Get("channelHandle")
 
-	userId, statusCode, err := unpackRequest(&params, r, s)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
 		log.Printf("in deleteChannelDELETE(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
 		return
 	}
 
-	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	feedId, err := getUserFeedId(s, userId, feedName)
 	if err != nil {
 		log.Printf("in deleteChannelDELETE(): error retrieving feedId: %s", err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
 		return
 	}
 
-	channelId, err := getChannelId(s, params.ChannelHandle)
+	channelId, err := getChannelId(s, channelHandle)
 	if err != nil {
 		log.Printf("in deleteChannelDELETE(): error retrieving channelId: %s", err)
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
@@ -491,7 +492,7 @@ func (s *state) deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := fmt.Sprintf("Successfully deleted channel with handle - %s", params.ChannelHandle)
+	message := fmt.Sprintf("Successfully deleted channel with handle - %s", channelHandle)
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
