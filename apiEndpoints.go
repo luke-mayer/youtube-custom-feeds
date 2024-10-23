@@ -97,56 +97,44 @@ func (p updateFeedParams) getFirebaseId() string {
 }
 
 // Used to unpack parameters from request and initialize the state and userId, returns statusCode if error
-func unpackRequest[T parameters](params *T, r *http.Request) (*state, int32, int, error) {
+func unpackRequest[T parameters](params *T, r *http.Request, s *state) (int32, int, error) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(params)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackRequest(): error decoding parameters: %s", err)
-		return &state{}, 0, statusCodes.ErrDecoding, newErr
-	}
-
-	s, err := getState()
-	if err != nil {
-		newErr := fmt.Errorf("in unpackRequest(): error retreiving state: %s", err)
-		return &state{}, 0, statusCodes.ErrState, newErr
+		return 0, statusCodes.ErrDecoding, newErr
 	}
 
 	firebaseId := r.Header.Get("Firebase-ID")
 	if firebaseId == "" {
 		newErr := fmt.Errorf("in unpackRequest(): error retrieving firebaseId")
-		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
+		return 0, statusCodes.ErrFirebaseId, newErr
 	}
 
 	userId, err := getUserId(s, firebaseId)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackRequest(): error retrieving userId: %s", err)
-		return &state{}, 0, statusCodes.ErrUserId, newErr
+		return 0, statusCodes.ErrUserId, newErr
 	}
 
-	return s, userId, statusCodes.Success, nil
+	return userId, statusCodes.Success, nil
 }
 
-func unpackGetRequest(r *http.Request) (*state, int32, int, error) {
-
-	s, err := getState()
-	if err != nil {
-		newErr := fmt.Errorf("in unpackGetRequest(): error retreiving state: %s", err)
-		return &state{}, 0, statusCodes.ErrState, newErr
-	}
+func unpackGetRequest(r *http.Request, s *state) (int32, int, error) {
 
 	firebaseId := r.Header.Get("Firebase-ID")
 	if firebaseId == "" {
 		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving firebaseId")
-		return &state{}, 0, statusCodes.ErrFirebaseId, newErr
+		return 0, statusCodes.ErrFirebaseId, newErr
 	}
 
 	userId, err := getUserId(s, firebaseId)
 	if err != nil {
 		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving userId: %s", err)
-		return &state{}, 0, statusCodes.ErrUserId, newErr
+		return 0, statusCodes.ErrUserId, newErr
 	}
 
-	return s, userId, statusCodes.Success, nil
+	return userId, statusCodes.Success, nil
 }
 
 // Used to write messages (such as errors) to response
@@ -205,20 +193,12 @@ func validateFirebaseId(token string) (string, error) {
 // ------------------------ //
 
 // POST - Checks if user is in the database. If not, creates a new user
-func login(w http.ResponseWriter, r *http.Request) {
+func (s *state) login(w http.ResponseWriter, r *http.Request) {
 
 	firebaseId := r.Header.Get("Firebase-ID")
 	if firebaseId == "" {
 		log.Println("in login(): error retireving firebaseId")
 		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFirebaseId], statusCodes.ErrFirebaseId)
-		return
-	}
-
-	s, err := getState()
-	if err != nil {
-		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrState], err)
-		log.Println(errMessage)
-		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrState], statusCodes.ErrState)
 		return
 	}
 
@@ -247,10 +227,10 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST - Creates a new feed
-func createFeedPOST(w http.ResponseWriter, r *http.Request) {
+func (s *state) createFeedPOST(w http.ResponseWriter, r *http.Request) {
 	params := feedParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
 		log.Printf("in createFeedPOST(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -274,10 +254,10 @@ func createFeedPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST - adds the youtube channel to the user's indicated field
-func addChannelPOST(w http.ResponseWriter, r *http.Request) {
+func (s *state) addChannelPOST(w http.ResponseWriter, r *http.Request) {
 	params := feedChannelParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
 		log.Printf("in addChannelPOST(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -303,9 +283,9 @@ func addChannelPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET - retrieves the user's feed names
-func getFeedsGET(w http.ResponseWriter, r *http.Request) {
+func (s *state) getFeedsGET(w http.ResponseWriter, r *http.Request) {
 
-	s, userId, statusCode, err := unpackGetRequest(r)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
 		log.Printf("in getFeedsGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -333,9 +313,9 @@ func getFeedsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET - retrieves the channel handles belonging to the user's specified feed
-func getChannelsGET(w http.ResponseWriter, r *http.Request) {
+func (s *state) getChannelsGET(w http.ResponseWriter, r *http.Request) {
 
-	s, userId, statusCode, err := unpackGetRequest(r)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
 		log.Printf("in getChannelsGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -379,9 +359,9 @@ func getChannelsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET - retrieves youtube videos for the provided feed
-func getVideosGET(w http.ResponseWriter, r *http.Request) {
+func (s *state) getVideosGET(w http.ResponseWriter, r *http.Request) {
 
-	s, userId, statusCode, err := unpackGetRequest(r)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
 		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -427,10 +407,10 @@ func getVideosGET(w http.ResponseWriter, r *http.Request) {
 }
 
 // PATCH - updates the provided feedName with the the provided newFeedName
-func renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
+func (s *state) renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
 	params := updateFeedParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
 		log.Printf("in renameFeedPATCH(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -458,10 +438,10 @@ func renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
 // DELETE - deletes the provided feed for the specific user
 //
 //	deletes all related feed-channels as a side effect
-func deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
+func (s *state) deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
 	params := feedParams{}
 	// NEED TO HAVE DELETE ALL FEED CHANNELS ASSOCIATED WITH THIS FEED
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
 		log.Printf("in deleteFeedDELETE(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -480,10 +460,10 @@ func deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 // DELETE - deletes the provided channel for the specific user and feed
-func deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
+func (s *state) deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 	params := feedChannelParams{}
 
-	s, userId, statusCode, err := unpackRequest(&params, r)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
 		log.Printf("in deleteChannelDELETE(): %s: %s", statusCodeMessages[statusCode], err)
 		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
@@ -524,17 +504,23 @@ func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	s, err := getState()
+	if err != nil {
+		newErr := fmt.Sprintf("Error initializing state: %s", err)
+		log.Fatal(newErr)
+	}
+
 	router := mux.NewRouter()
 	api := router.PathPrefix(PREFIX).Subrouter()
-	api.HandleFunc("/login", login).Methods(http.MethodPost)
-	api.HandleFunc("/feed", createFeedPOST).Methods(http.MethodPost)
-	api.HandleFunc("/channel", addChannelPOST).Methods(http.MethodPost)
-	api.HandleFunc("/feeds", getFeedsGET).Methods(http.MethodGet)
-	api.HandleFunc("/channels", getChannelsGET).Methods(http.MethodGet)
-	api.HandleFunc("/videos", getVideosGET).Methods(http.MethodGet)
-	api.HandleFunc("/feed", renameFeedPATCH).Methods(http.MethodPatch)
-	api.HandleFunc("/feed", deleteFeedDELETE).Methods(http.MethodDelete)
-	api.HandleFunc("/channel", deleteChannelDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/login", s.login).Methods(http.MethodPost)
+	api.HandleFunc("/feed", s.createFeedPOST).Methods(http.MethodPost)
+	api.HandleFunc("/channel", s.addChannelPOST).Methods(http.MethodPost)
+	api.HandleFunc("/feeds", s.getFeedsGET).Methods(http.MethodGet)
+	api.HandleFunc("/channels", s.getChannelsGET).Methods(http.MethodGet)
+	api.HandleFunc("/videos", s.getVideosGET).Methods(http.MethodGet)
+	api.HandleFunc("/feed", s.renameFeedPATCH).Methods(http.MethodPatch)
+	api.HandleFunc("/feed", s.deleteFeedDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/channel", s.deleteChannelDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
 
 	log.Fatal(http.ListenAndServe(PORT, router))
