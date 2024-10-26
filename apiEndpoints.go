@@ -496,6 +496,27 @@ func (s *state) deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
+// DELETE - deletes user from database including deleting all their feeds and channels
+func (s *state) deleteUserDELETE(w http.ResponseWriter, r *http.Request) {
+
+	userId, statusCode, err := unpackGetRequest(r, s)
+	if err != nil {
+		log.Printf("in deleteUserDELETE(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
+	}
+
+	err = deleteUser(s, userId)
+	if err != nil {
+		log.Printf("in deleteUserDELETE(): error deleting user from database: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := "Successfully deleted user from database"
+	writeResponseMessage(w, message, statusCodes.Success)
+}
+
 // OPTIONS - preflight for cors
 func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*") // Replace with specific domain later probably
@@ -522,6 +543,7 @@ func main() {
 	api.HandleFunc("/feed", s.renameFeedPATCH).Methods(http.MethodPatch)
 	api.HandleFunc("/feed", s.deleteFeedDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/channel", s.deleteChannelDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/user", s.deleteUserDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
 
 	log.Fatal(http.ListenAndServe(PORT, router))

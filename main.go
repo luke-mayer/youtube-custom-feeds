@@ -176,6 +176,31 @@ func getUserFeedId(s *state, userId int32, feedName string) (int32, error) {
 	return feedId, nil
 }
 
+// Deletes the user, including all of their feeds and subsequent channels
+func deleteUser(s *state, userId int32) error {
+	ctx := context.Background()
+
+	exists, err := s.db.ContainsUserById(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("error checking if userId exists: %s", err)
+	}
+	if !exists {
+		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
+	}
+
+	err = deleteAllFeeds(s, userId)
+	if err != nil {
+		return fmt.Errorf("in deleteUser(): error deleting all feeds: %s", err)
+	}
+
+	err = s.db.DeleteUserById(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("in deleteUser(): error deleting user from database: %s", err)
+	}
+
+	return nil
+}
+
 // Deletes all feeds belonging to the specified user
 func deleteAllFeeds(s *state, userId int32) error {
 	ctx := context.Background()

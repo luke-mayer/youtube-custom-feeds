@@ -27,9 +27,8 @@ SELECT EXISTS (
     WHERE id = $1
 );
 
--- name: DeleteUserById :one
-DELETE FROM users WHERE id = $1
-RETURNING *;
+-- name: DeleteUserById :exec
+DELETE FROM users WHERE id = $1;
 
 -- name: GetAllUsers :many
 SELECT * FROM users;
