@@ -182,7 +182,7 @@ func deleteUser(s *state, userId int32) error {
 
 	exists, err := s.db.ContainsUserById(ctx, userId)
 	if err != nil {
-		return fmt.Errorf("error checking if userId exists: %s", err)
+		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
 	}
 	if !exists {
 		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
@@ -207,15 +207,22 @@ func deleteAllFeeds(s *state, userId int32) error {
 
 	exists, err := s.db.ContainsUserById(ctx, userId)
 	if err != nil {
-		return fmt.Errorf("error checking if userId exists: %s", err)
+		return fmt.Errorf("in deleteAllFeeds(): error checking if userId exists: %s", err)
 	}
 	if !exists {
-		return fmt.Errorf("error user with id %v does not exist in database", userId)
+		return fmt.Errorf("in deleteAllFeeds(): error user with id %v does not exist in database", userId)
 	}
 
-	err = s.db.DeleteAllFeeds(ctx, userId)
+	feedNames, err := getAllUserFeedNames(s, userId)
 	if err != nil {
-		return fmt.Errorf("error deleting all feeds: %s", err)
+		return fmt.Errorf("in deleteAllFeeds(): error retrieving all user feedNames: %s", err)
+	}
+
+	for _, feedName := range feedNames {
+		err := deleteFeed(s, userId, feedName)
+		if err != nil {
+			return fmt.Errorf("in deleteAllFeeds(): Error deleing all feeds: %s", err)
+		}
 	}
 
 	return nil
