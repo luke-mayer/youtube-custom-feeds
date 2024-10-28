@@ -1,6 +1,8 @@
-# YouTube Custom Feeds Extension
+# YouTube Custom Feeds
 
-A Chrome extension that allows you to create personalized YouTube feeds containing content only from channels that you select. Once feeds are created, you can view a list of recent videos from all channels in the feed and manage them conveniently within the side panel.
+A Chrome extension that allows you to create personalized YouTube feeds containing content 
+only from channels that you select. Once feeds are created, you can view a list of recent 
+videos from all channels in the feed. 
 
 ## Features
 
@@ -17,7 +19,8 @@ A Chrome extension that allows you to create personalized YouTube feeds containi
 
 ## Getting Started
 
-To install and use the extension, follow the link below to add it to Chrome. Once installed, you can start creating custom feeds and viewing recent videos from your selected channels.
+The chrome extension is currently awaiting approval to be published on the Chrome Web Store. once
+it is approved, the link will be posted here (currently an empty link).
 
 > **[Install from Chrome Web Store](#link-to-chrome-web-store)**
 
