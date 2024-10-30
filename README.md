@@ -1,28 +1,32 @@
+<p align="center"><img src="images/YCF.png"/></p>
+
 # YouTube Custom Feeds
 
 A Chrome extension that allows you to create personalized YouTube feeds containing content 
 only from channels that you select. Once feeds are created, you can view a list of recent 
 videos from all channels in the feed. 
 
-## Features
-
-- **Custom Feeds**: Combine multiple YouTube channels into unique, custom feeds.
-- **Side Panel Access**: Quickly view and manage feeds directly in the Chrome side panel.
-- **Feed Management**: Add, remove, or view channels in each feed for a personalized experience.
-
-## Table of Contents
-
-1. [Getting Started](#getting-started)
-2. [Project Structure](#project-structure)
-3. [Technologies](#technologies)
-4. [License](#license)
+<p align="center"><img src="images/YCF_SS1.png"/></p>
 
 ## Getting Started
 
-The chrome extension is currently awaiting approval to be published on the Chrome Web Store. once
-it is approved, the link will be posted here (currently an empty link).
+The chrome extension is currently awaiting approval to be published on the Chrome Web Store. once it is approved, the link will be posted here (currently an empty link).
 
-> **[Install from Chrome Web Store](#link-to-chrome-web-store)**
+FYI - If you want to try out the extension, but do not want to use your actual email, I'm pretty sure you can just come up with a random email and you can make an account. Trying out the app without creating any type of account is a planned feature that will be coming shortly.
+
+> **[Install from Chrome Web Store (currently inactive)](#link-to-chrome-web-store)**
+
+## Table of Contents
+
+1. [Description](#description)
+2. [Project Structure](#project-structure)
+3. [Current Status](#current-status)
+4. [Future Plans](#future-plans)
+5. [License](#license)
+
+## Description
+
+Take control of your YouTube browsing with custom feeds tailored to your interests. This extension allows you to create personalized feeds that showcase recent videos from selected channels. Instead of sifting through every new upload, organize your subscriptions into separate feeds. Create a feed just for fitness videos, another for science and educational content, or even a dedicated feed with channels your kids enjoy. Switch easily between feeds in a user-friendly side panel to see only the videos you want, when you want. Perfect for a streamlined and customized YouTube experience.
 
 ## Project Structure
 
@@ -30,13 +34,26 @@ it is approved, the link will be posted here (currently an empty link).
 - **Frontend**: Developed with vanilla JavaScript, HTML, and CSS for a responsive and simple user interface.
 - **Authentication**: Firebase Authentication for secure access. 
 
-## Technologies
+## Current Status
 
-- **Golang** (Backend API)
-- **Google Cloud Run** (Backend hosting)
-- **Google Cloud SQL** (PostgreSQL database)
-- **Vanilla JavaScript, HTML/CSS** (Frontend)
-- **Firebase Authentication**
+Core functionality and features are almost entirely implemented including:
+- User Authentication using Firebase Authentication (only email and password).
+- Account deletion(including any data stored in the backend)
+- Feed Creation and naming.
+- Adding and removing channels from feeds.
+- Retrieving recent uploads from channels in a feed.
+- User feed storage in backend, allowing continuity between logins.
+
+## Future Plans
+
+Features to be implemented and work to be done:
+- Firebase Anonymous Authentication (allows a user to try out the features without creating an account).
+- Full Firebase Authentication (ability to sign up and login with Google, Github, etc.,)
+- Feed renaming (implemented on backed, need front end support).
+- Ability to change how videos in a feed are ordered (currently ordered by upload date, favors channels that upload more frequently as they will have more videos at the top of the feed).
+- Front end technical polishing. Currenty functional, but has some quirks (for instance, somtimes backs out of video view to feed view when loading first youtube video link in current tab).
+- Front end aesthetic polishing (currently very plain, could use a fresh coat of paint).
+- Expansion to other platforms/form factors (stand alone webpage, Firefox extension, app, etc.,).
 
 ## License
 
