@@ -10,11 +10,9 @@ videos from all channels in the feed.
 
 ## Getting Started
 
-The chrome extension is currently awaiting approval to be published on the Chrome Web Store. once it is approved, the link will be posted here (currently an empty link).
+Simply head to the link below and install the extension in your chrome browser.
 
-FYI - If you want to try out the extension, but do not want to use your actual email, I'm pretty sure you can just come up with a random email and you can make an account. Trying out the app without creating any type of account is a planned feature that will be coming shortly.
-
-> **[Install from Chrome Web Store (currently inactive)](#link-to-chrome-web-store)**
+> **[Install from Chrome Web Store](https://chromewebstore.google.com/detail/youtube-custom-feeds/hihmkocmnjddomhngmmpkdidkmpkneea)**
 
 ## Table of Contents
 

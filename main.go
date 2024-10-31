@@ -2,488 +2,549 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
-	"time"
+	"net/http"
 
-	_ "github.com/lib/pq"
-	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
-	"github.com/luke-mayer/youtube-custom-feeds/internal/database"
+	"github.com/gorilla/mux"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/youtube"
 )
 
-type state struct {
-	db  *database.Queries
-	cfg *config.Config
+const PORT = ":8080"
+const PREFIX = "/api/v1"
+const VIDEO_LIMIT = 10
+
+type StatusCodes struct {
+	Success       int
+	ErrRequest    int
+	ErrDecoding   int
+	ErrFirebaseId int
+	ErrServer     int
+	ErrState      int
+	ErrUserId     int
+	ErrMarshaling int
+	ErrFeed       int
+	ErrFeedExists int
 }
 
-// retrieves the current state with sql database connection and current userName
-func getState() (*state, error) {
-	var s state
-
-	tempCfg, err := config.Read() // retrieves state from youtube-custom-feeds.json
-	if err != nil {
-		return &state{}, fmt.Errorf("in getState(): error retireving config json: %s", err)
-	}
-
-	s.cfg = &tempCfg
-
-	db, err := sql.Open("postgres", s.cfg.DBUrl)
-	if err != nil {
-		return &state{}, fmt.Errorf("in getState(): error connecting to database: %s", err)
-	}
-
-	err = db.Ping()
-	if err != nil {
-		log.Printf("Error pinging database: %v", err)
-		return &state{}, fmt.Errorf("in getState(): error pinging database: %v", err)
-	}
-
-	s.db = database.New(db)
-
-	return &s, nil
+var statusCodes = StatusCodes{
+	Success:       200,
+	ErrRequest:    400,
+	ErrDecoding:   400,
+	ErrFirebaseId: 400,
+	ErrServer:     500,
+	ErrState:      503,
+	ErrUserId:     500,
+	ErrMarshaling: 500,
+	ErrFeed:       500,
+	ErrFeedExists: 500,
 }
 
-// Retrieves user id using a firebase user id
-func getUserId(s *state, firebaseId string) (int32, error) {
-	userId, err := s.db.GetUserIdByFirebaseId(context.Background(), firebaseId)
-	if err != nil {
-		return 0, fmt.Errorf("in getUserId(): error retrieving userId: %s", err)
-	}
-
-	return userId, nil
+var statusCodeMessages = map[int]string{
+	statusCodes.Success:       "successful completion",
+	statusCodes.ErrRequest:    "error: invalid request",
+	statusCodes.ErrDecoding:   "error: decoding parameters",
+	statusCodes.ErrFirebaseId: "error: firebase id issue",
+	statusCodes.ErrServer:     "error: server issue",
+	statusCodes.ErrState:      "error: issue initializing state",
+	statusCodes.ErrUserId:     "error: retrieving user id",
+	statusCodes.ErrMarshaling: "error: marshaling JSON",
+	statusCodes.ErrFeed:       "error: creating feed",
+	statusCodes.ErrFeedExists: "error: feed with provided name already exists for specified user",
 }
 
-// Creates a new user in the database
-func registerUser(s *state, firebaseId string) error {
-	params := database.CreateUserParams{
-		FbUserID:  firebaseId,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	_, err := s.db.CreateUser(context.Background(), params)
-	if err != nil {
-		return fmt.Errorf("error in registerUser(): error creating user in database: %s", err)
-	}
-
-	return nil
+type parameters interface {
+	firebaseIdParams | feedParams | feedChannelParams | updateFeedParams
+	getFirebaseId() string
 }
 
-//************************************//
-//         Pipeline Functions         //
-//************************************//
+type firebaseIdParams struct {
+	FirebaseId string `json:"Firebase-Id"`
+}
 
-// Creates a custom feed for a user
-func createFeed(s *state, userId int32, feedName string) (bool, database.Feed, error) {
-	feed := database.Feed{}
-	ctx := context.Background()
+type feedParams struct {
+	FirebaseId string `json:"firebaseId"`
+	FeedName   string `json:"feedName"`
+}
 
-	containsParams := database.ContainsFeedParams{
-		UserID: userId,
-		Name:   feedName,
+type feedChannelParams struct {
+	FirebaseId    string `json:"firebaseId"`
+	FeedName      string `json:"feedName"`
+	ChannelHandle string `json:"channelHandle"`
+}
+
+type updateFeedParams struct {
+	FirebaseId  string `json:"firebaseId"`
+	FeedName    string `json:"feedName"`
+	NewFeedName string `json:"newFeedName"`
+}
+
+func (p firebaseIdParams) getFirebaseId() string {
+	return p.FirebaseId
+}
+
+func (p feedParams) getFirebaseId() string {
+	return p.FirebaseId
+}
+
+func (p feedChannelParams) getFirebaseId() string {
+	return p.FirebaseId
+}
+
+func (p updateFeedParams) getFirebaseId() string {
+	return p.FirebaseId
+}
+
+// Used to unpack parameters from request and initialize the state and userId, returns statusCode if error
+func unpackRequest[T parameters](params *T, r *http.Request, s *state) (int32, int, error) {
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(params)
+	if err != nil {
+		newErr := fmt.Errorf("in unpackRequest(): error decoding parameters: %s", err)
+		return 0, statusCodes.ErrDecoding, newErr
 	}
 
-	contains, err := s.db.ContainsFeed(ctx, containsParams)
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		newErr := fmt.Errorf("in unpackRequest(): error retrieving firebaseId")
+		return 0, statusCodes.ErrFirebaseId, newErr
+	}
+
+	userId, err := getUserId(s, firebaseId)
 	if err != nil {
-		return false, feed, fmt.Errorf("in createFeed(): error checking if user already has a feed with provided name: %s", err)
+		newErr := fmt.Errorf("in unpackRequest(): error retrieving userId: %s", err)
+		return 0, statusCodes.ErrUserId, newErr
+	}
+
+	return userId, statusCodes.Success, nil
+}
+
+func unpackGetRequest(r *http.Request, s *state) (int32, int, error) {
+
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving firebaseId")
+		return 0, statusCodes.ErrFirebaseId, newErr
+	}
+
+	userId, err := getUserId(s, firebaseId)
+	if err != nil {
+		newErr := fmt.Errorf("in unpackGetRequest(): error retrieving userId: %s", err)
+		return 0, statusCodes.ErrUserId, newErr
+	}
+
+	return userId, statusCodes.Success, nil
+}
+
+// Used to write messages (such as errors) to response
+func writeResponseMessage(w http.ResponseWriter, message string, statusCode int) {
+	type returnVals struct {
+		Message string `json:"message"`
+	}
+	resBody := returnVals{
+		Message: message,
+	}
+
+	writeResponse(w, resBody, statusCode)
+}
+
+// Used to write to response body
+func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
+	data, err := json.Marshal(resBody)
+	if err != nil {
+		log.Printf("in writeResponseData(): error marshaling JSON: %s", err)
+		w.WriteHeader(statusCodes.ErrMarshaling)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.WriteHeader(statusCode)
+	w.Write(data)
+}
+
+/*
+// validates OAuth2 ID token and returns firebaseId (sum field)
+func validateFirebaseId(token string) (string, error) {
+	clientId, err := config.GetClientId()
+	if err != nil {
+		return "", fmt.Errorf("in validateFirebaseId(): error retrieiving client id: %s", err)
+	}
+
+	payload, err := idtoken.Validate(context.Background(), token, clientId)
+	if err != nil {
+		return "", fmt.Errorf("in validateFirebaseId(): error validating token: %s", err)
+	}
+
+	firebaseId, ok := payload.Claims["sub"].(string)
+	if !ok {
+		return "", fmt.Errorf("in validateToken(): error extracting firebaseId from token: %s", err)
+	}
+
+	return firebaseId, nil
+}
+*/
+
+// ------------------------ //
+//		API ENDPOINTS		//
+// ------------------------ //
+
+// POST - Checks if user is in the database. If not, creates a new user
+func (s *state) login(w http.ResponseWriter, r *http.Request) {
+
+	firebaseId := r.Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		log.Println("in login(): error retireving firebaseId")
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFirebaseId], statusCodes.ErrFirebaseId)
+		return
+	}
+
+	exists, err := s.db.ContainsUserByFirebaseId(context.Background(), firebaseId)
+	if err != nil {
+		errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
+		log.Println(errMessage)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := statusCodeMessages[statusCodes.Success]
+
+	if !exists {
+		err := registerUser(s, firebaseId)
+		if err != nil {
+			errMessage := fmt.Sprintf("in login(): %s: %s", statusCodeMessages[statusCodes.ErrServer], err)
+			log.Println(errMessage)
+			writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+			return
+		}
+		message = "user did not exist in database - created new user"
+	}
+
+	writeResponseMessage(w, message, statusCodes.Success)
+}
+
+// POST - Creates a new feed
+func (s *state) createFeedPOST(w http.ResponseWriter, r *http.Request) {
+	params := feedParams{}
+
+	userId, statusCode, err := unpackRequest(&params, r, s)
+	if err != nil {
+		log.Printf("in createFeedPOST(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
+	}
+
+	contains, _, err := createFeed(s, userId, params.FeedName)
+	if err != nil {
+		log.Printf("in createFeedPOST(): error creating feed: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
 	}
 	if contains {
-		return true, feed, nil
+		message := fmt.Sprintf("Feed with name - %s - already exists for specified user", params.FeedName)
+		writeResponseMessage(w, message, statusCodes.ErrFeedExists)
+		return
 	}
 
-	params := database.CreateFeedParams{
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Name:      feedName,
-		UserID:    userId,
-	}
-
-	feed, err = s.db.CreateFeed(ctx, params)
-	if err != nil {
-		return false, feed, fmt.Errorf("error creating feed \"%s\" for user with id %v", feedName, userId)
-	}
-
-	log.Printf("Successfully created feed with - feed_id: %v, feedName: %v, for user with userId: %v",
-		feed.ID, feed.Name, feed.UserID)
-	return false, feed, nil
+	message := fmt.Sprintf("Feed - %s - successfully created", params.FeedName)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// Retrieves all feeds belonging to the specified user
-func getAllUserFeeds(s *state, userId int32) ([]database.GetAllUserFeedsRow, error) {
-	feeds := []database.GetAllUserFeedsRow{}
-	ctx := context.Background()
+// POST - adds the youtube channel to the user's indicated field
+func (s *state) addChannelPOST(w http.ResponseWriter, r *http.Request) {
+	params := feedChannelParams{}
 
-	exists, err := s.db.ContainsUserById(ctx, userId)
+	userId, statusCode, err := unpackRequest(&params, r, s)
 	if err != nil {
-		return feeds, fmt.Errorf("in getAllUserFeeds(): error checking if userId exists: %s", err)
-	}
-	if !exists {
-		return feeds, fmt.Errorf("in getAllUserFeeds(): error user with id %v does not exist in database", userId)
+		log.Printf("in addChannelPOST(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
 	}
 
-	feeds, err = s.db.GetAllUserFeeds(ctx, userId)
+	feedId, err := getUserFeedId(s, userId, params.FeedName)
 	if err != nil {
-		return feeds, fmt.Errorf("in getAllUserFeeds(): error retrieving feeds for user with id %v", userId)
+		log.Printf("in addChannelPOST(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
 	}
 
-	return feeds, nil
+	err = addChannelToFeed(s, feedId, params.ChannelHandle)
+	if err != nil {
+		log.Printf("in addChannelPOST(): error adding channel to feed: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := fmt.Sprintf("Channel - %s - successfully added to feed - %s", params.ChannelHandle, params.FeedName)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// Retrieves all feedNames belonging to the specified user
-func getAllUserFeedNames(s *state, userId int32) ([]string, error) {
-	ctx := context.Background()
+// GET - retrieves the user's feed names
+func (s *state) getFeedsGET(w http.ResponseWriter, r *http.Request) {
 
-	exists, err := s.db.ContainsUserById(ctx, userId)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
-		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error checking if userId exists: %s", err)
-	}
-	if !exists {
-		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error user with id %v does not exist in database", userId)
-	}
-
-	feedNames, err := s.db.GetAllUserFeedNames(ctx, userId)
-	if err != nil {
-		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error retrieving feedNames for user with id %v", userId)
-	}
-
-	return feedNames, nil
-}
-
-// Retrieves feed id for the feed withe the provided name, belonging to the specified user
-func getUserFeedId(s *state, userId int32, feedName string) (int32, error) {
-	ctx := context.Background()
-
-	exists, err := s.db.ContainsUserById(ctx, userId)
-	if err != nil {
-		return 0, fmt.Errorf("error checking if userId exists: %s", err)
-	}
-	if !exists {
-		return 0, fmt.Errorf("error user with id %v does not exist in database", userId)
-	}
-
-	params := database.GetFeedIdParams{
-		UserID: userId,
-		Name:   feedName,
-	}
-
-	feedId, err := s.db.GetFeedId(ctx, params)
-	if err != nil {
-		return 0, fmt.Errorf("error retrieving feed \"%s\" for user with id %v", feedName, userId)
-	}
-
-	return feedId, nil
-}
-
-// Deletes the user, including all of their feeds and subsequent channels
-func deleteUser(s *state, userId int32) error {
-	ctx := context.Background()
-
-	exists, err := s.db.ContainsUserById(ctx, userId)
-	if err != nil {
-		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
-	}
-	if !exists {
-		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
-	}
-
-	err = deleteAllFeeds(s, userId)
-	if err != nil {
-		return fmt.Errorf("in deleteUser(): error deleting all feeds: %s", err)
-	}
-
-	err = s.db.DeleteUserById(ctx, userId)
-	if err != nil {
-		return fmt.Errorf("in deleteUser(): error deleting user from database: %s", err)
-	}
-
-	return nil
-}
-
-// Deletes all feeds belonging to the specified user
-func deleteAllFeeds(s *state, userId int32) error {
-	ctx := context.Background()
-
-	exists, err := s.db.ContainsUserById(ctx, userId)
-	if err != nil {
-		return fmt.Errorf("in deleteAllFeeds(): error checking if userId exists: %s", err)
-	}
-	if !exists {
-		return fmt.Errorf("in deleteAllFeeds(): error user with id %v does not exist in database", userId)
+		log.Printf("in getFeedsGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
 	}
 
 	feedNames, err := getAllUserFeedNames(s, userId)
 	if err != nil {
-		return fmt.Errorf("in deleteAllFeeds(): error retrieving all user feedNames: %s", err)
+		log.Printf("in getFeedsGET(): error retrieving feedNames: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
 	}
 
-	for _, feedName := range feedNames {
-		err := deleteFeed(s, userId, feedName)
-		if err != nil {
-			return fmt.Errorf("in deleteAllFeeds(): Error deleing all feeds: %s", err)
-		}
+	message := "Successfully retrieved feedNames"
+	type returnVals struct {
+		Message   string   `json:"message"`
+		FeedNames []string `json:"feedNames"`
+	}
+	resBody := returnVals{
+		Message:   message,
+		FeedNames: feedNames,
 	}
 
-	return nil
+	writeResponse(w, resBody, statusCodes.Success)
 }
 
-// Deletes feed with given name belonging to the specified user.
-// Deletes all feed-channels as a consequence
-func deleteFeed(s *state, userId int32, feedName string) error {
-	ctx := context.Background()
+// GET - retrieves the channel handles belonging to the user's specified feed
+func (s *state) getChannelsGET(w http.ResponseWriter, r *http.Request) {
 
-	exists, err := s.db.ContainsUserById(ctx, userId)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
-		return fmt.Errorf("error checking if userId exists: %s", err)
+		log.Printf("in getChannelsGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
 	}
-	if !exists {
-		return fmt.Errorf("error user with id %v does not exist in database", userId)
+
+	feedName := r.URL.Query().Get("feedName")
+
+	feedId, err := getUserFeedId(s, userId, feedName)
+	if err != nil {
+		log.Printf("in getChannelsGET(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	channelIds, err := getAllFeedChannels(s, feedId)
+	if err != nil {
+		log.Printf("in getChannelsGET(): error retrieving feed channel Ids: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	channelHandles, err := getAllChannelHandles(s, channelIds)
+	if err != nil {
+		log.Printf("in getChannelsGET(): error retrieving handles: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := "Successfully retrieved channel handles"
+	type returnVals struct {
+		Message        string   `json:"message"`
+		ChannelHandles []string `json:"channelHandles"`
+	}
+	resBody := returnVals{
+		Message:        message,
+		ChannelHandles: channelHandles,
+	}
+
+	writeResponse(w, resBody, statusCodes.Success)
+}
+
+// GET - retrieves youtube videos for the provided feed
+func (s *state) getVideosGET(w http.ResponseWriter, r *http.Request) {
+
+	userId, statusCode, err := unpackGetRequest(r, s)
+	if err != nil {
+		log.Printf("in getVideosGET(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
+	}
+
+	feedName := r.URL.Query().Get("feedName")
+
+	feedId, err := getUserFeedId(s, userId, feedName)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	channelIds, err := getAllFeedChannels(s, feedId)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feed channel Ids: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	uploadIds, err := getAllUploadIds(s, channelIds)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving feed upload Ids: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	videos, err := youtube.GetFeedVideosJSON(VIDEO_LIMIT, uploadIds)
+	if err != nil {
+		log.Printf("in getVideosGET(): error retrieving videos as JSON: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.WriteHeader(statusCodes.Success)
+	w.Write(videos)
+}
+
+// PATCH - updates the provided feedName with the the provided newFeedName
+func (s *state) renameFeedPATCH(w http.ResponseWriter, r *http.Request) {
+	params := updateFeedParams{}
+
+	userId, statusCode, err := unpackRequest(&params, r, s)
+	if err != nil {
+		log.Printf("in renameFeedPATCH(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
+	}
+
+	feedId, err := getUserFeedId(s, userId, params.FeedName)
+	if err != nil {
+		log.Printf("in renameFeedPATCH(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	err = updateFeedName(s, feedId, params.NewFeedName)
+	if err != nil {
+		log.Printf("in renameFeedPATCH(): error updating feed name: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
+	}
+
+	message := fmt.Sprintf("Feed name successfully updated from - %s - to new name - %s", params.FeedName, params.NewFeedName)
+	writeResponseMessage(w, message, statusCodes.Success)
+}
+
+// DELETE - deletes the provided feed for the specific user
+//
+//	deletes all related feed-channels as a side effect
+func (s *state) deleteFeedDELETE(w http.ResponseWriter, r *http.Request) {
+	feedName := r.URL.Query().Get("feedName")
+
+	userId, statusCode, err := unpackGetRequest(r, s)
+	if err != nil {
+		log.Printf("in deleteFeedDELETE(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
+	}
+
+	err = deleteFeed(s, userId, feedName)
+	if err != nil {
+		log.Printf("in deleteFeedDELETE(): error deleting feed<%s>: %s", feedName, err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := fmt.Sprintf("Successfully deleted feed with name - %s", feedName)
+	writeResponseMessage(w, message, statusCodes.Success)
+}
+
+// DELETE - deletes the provided channel for the specific user and feed
+func (s *state) deleteChannelDELETE(w http.ResponseWriter, r *http.Request) {
+	feedName := r.URL.Query().Get("feedName")
+	channelHandle := r.URL.Query().Get("channelHandle")
+
+	userId, statusCode, err := unpackGetRequest(r, s)
+	if err != nil {
+		log.Printf("in deleteChannelDELETE(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
 	}
 
 	feedId, err := getUserFeedId(s, userId, feedName)
 	if err != nil {
-		return fmt.Errorf("in deleteFeed(): error retrieving feedId: %s", err)
+		log.Printf("in deleteChannelDELETE(): error retrieving feedId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
+		return
 	}
 
-	err = deleteAllFeedChannels(s, feedId)
+	channelId, err := getChannelId(s, channelHandle)
 	if err != nil {
-		return fmt.Errorf("in deleteFeed(): error deleting all feed-channels: %s", err)
+		log.Printf("in deleteChannelDELETE(): error retrieving channelId: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
 	}
 
-	params := database.DeleteFeedParams{
-		UserID: userId,
-		Name:   feedName,
-	}
-
-	err = s.db.DeleteFeed(ctx, params)
+	err = deleteFeedChannel(s, feedId, channelId)
 	if err != nil {
-		return fmt.Errorf("in deleteFeed(): error deleting feed: %s", err)
+		log.Printf("in deleteChannelDELETE(): error deleting channel: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
 	}
 
-	return nil
+	message := fmt.Sprintf("Successfully deleted channel with handle - %s", channelHandle)
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// Creates channel
-func createChannel(s *state, channelId, uploadId, channelHandle string) error {
-	channelUrl := youtube.GetChannelURL(channelId)
+// DELETE - deletes user from database including deleting all their feeds and channels
+func (s *state) deleteUserDELETE(w http.ResponseWriter, r *http.Request) {
 
-	params := database.InsertChannelParams{
-		ChannelID:       channelId,
-		ChannelUploadID: uploadId,
-		ChannelUrl:      channelUrl,
-		ChannelHandle:   channelHandle,
-	}
-
-	channel, err := s.db.InsertChannel(context.Background(), params)
+	userId, statusCode, err := unpackGetRequest(r, s)
 	if err != nil {
-		return fmt.Errorf("error inserting channel \"%s\" into database: %s", channelHandle, err)
+		log.Printf("in deleteUserDELETE(): %s: %s", statusCodeMessages[statusCode], err)
+		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
+		return
 	}
 
-	log.Printf("Successfully inserted channel \"%s\" in database", channel.ChannelHandle)
-	return nil
+	err = deleteUser(s, userId)
+	if err != nil {
+		log.Printf("in deleteUserDELETE(): error deleting user from database: %s", err)
+		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrServer], statusCodes.ErrServer)
+		return
+	}
+
+	message := "Successfully deleted user from database"
+	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// Creates feed channel
-func createFeedChannel(s *state, feedId int32, channelId, uploadId, channelHandle string) error {
-	containsParams := database.ContainsFeedChannelParams{
-		FeedID:    feedId,
-		ChannelID: channelId,
-	}
-
-	exists, err := s.db.ContainsFeedChannel(context.Background(), containsParams)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-
-	exists, err = s.db.ContainsChannel(context.Background(), channelId)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		err = createChannel(s, channelId, uploadId, channelHandle)
-		if err != nil {
-			return err
-		}
-	}
-
-	params := database.InsertFeedChannelParams{
-		FeedID:    feedId,
-		ChannelID: channelId,
-	}
-
-	err = s.db.InsertFeedChannel(context.Background(), params)
-	if err != nil {
-		return fmt.Errorf("error inserting feedId: %v, and channelId %s, : %s", feedId, channelId, err)
-	}
-
-	return nil
+// OPTIONS - preflight for cors
+func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Replace with specific domain later probably
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.WriteHeader(http.StatusOK)
 }
 
-// Deletes channel
-func deleteChannel(s *state, channelId string) error {
-	ctx := context.Background()
-
-	err := s.db.DeleteChannel(ctx, channelId)
+func main() {
+	s, err := getState()
 	if err != nil {
-		return fmt.Errorf("error deleting channel with id: %v, :%s", channelId, err)
+		newErr := fmt.Sprintf("Error initializing state: %s", err)
+		log.Fatal(newErr)
 	}
 
-	return nil
-}
+	router := mux.NewRouter()
+	api := router.PathPrefix(PREFIX).Subrouter()
+	api.HandleFunc("/login", s.login).Methods(http.MethodPost)
+	api.HandleFunc("/feed", s.createFeedPOST).Methods(http.MethodPost)
+	api.HandleFunc("/channel", s.addChannelPOST).Methods(http.MethodPost)
+	api.HandleFunc("/feeds", s.getFeedsGET).Methods(http.MethodGet)
+	api.HandleFunc("/channels", s.getChannelsGET).Methods(http.MethodGet)
+	api.HandleFunc("/videos", s.getVideosGET).Methods(http.MethodGet)
+	api.HandleFunc("/feed", s.renameFeedPATCH).Methods(http.MethodPatch)
+	api.HandleFunc("/feed", s.deleteFeedDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/channel", s.deleteChannelDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/user", s.deleteUserDELETE).Methods(http.MethodDelete)
+	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
 
-// Deletes feed channel and deletes channel if no remaining references in feeds_channels db
-func deleteFeedChannel(s *state, feedId int32, channelId string) error {
-	ctx := context.Background()
-
-	params := database.DeleteFeedChannelParams{
-		FeedID:    feedId,
-		ChannelID: channelId,
-	}
-
-	err := s.db.DeleteFeedChannel(ctx, params)
-	if err != nil {
-		return fmt.Errorf("error deleting feed channel: %s", err)
-	}
-
-	exists, err := s.db.ContainsChannel(ctx, channelId)
-	if err != nil {
-		return err
-	}
-	if !exists { // deleting channel from channels if no more references in feeds_channels
-		return deleteChannel(s, channelId)
-	}
-
-	return nil
-}
-
-// Deletes all channels in the provided feed
-func deleteAllFeedChannels(s *state, feedId int32) error {
-	channelIds, err := getAllFeedChannels(s, feedId)
-	if err != nil {
-		return fmt.Errorf("in deleteAllFeedChannels(): error retrieving all channelIds in feed: %s", err)
-	}
-
-	for _, channelId := range channelIds {
-		err := deleteFeedChannel(s, feedId, channelId)
-		if err != nil {
-			return fmt.Errorf("in deleteAllFeedChannels(): error deleing channel-feed: %s", err)
-		}
-	}
-
-	return nil
-}
-
-// Gets all the channelIds for channels in feed
-func getAllFeedChannels(s *state, feedId int32) ([]string, error) {
-
-	channels, err := s.db.GetAllFeedChannels(context.Background(), feedId)
-	if err != nil {
-		return []string{}, fmt.Errorf("in getAllFeedChannels(): error getting channel ids for feed with id: %v, :%s", feedId, err)
-	}
-
-	return channels, nil
-}
-
-// Retrieves all uploadIds associated with the provided channelIds
-func getAllUploadIds(s *state, channelIds []string) ([]string, error) {
-	uploadIds := []string{}
-
-	for _, channelId := range channelIds {
-		uploadId, err := s.db.GetUploadId(context.Background(), channelId)
-		if err != nil {
-			log.Println(fmt.Errorf("in getAllUploadIds(): error retrieiving uploadId: %s", err))
-			continue
-		}
-		uploadIds = append(uploadIds, uploadId)
-	}
-
-	/*
-		if len(uploadIds) < 1 {
-			return []string{}, fmt.Errorf("in getAllUploadIds(): error retrieving uploadIds, not a single Id retrieved")
-		}
-	*/
-
-	return uploadIds, nil
-}
-
-// Retrieves all handles associated with the provided channelIds
-func getAllChannelHandles(s *state, channelIds []string) ([]string, error) {
-	uploadIds := []string{}
-
-	for _, channelId := range channelIds {
-		uploadId, err := s.db.GetChannelHandle(context.Background(), channelId)
-		if err != nil {
-			log.Println(fmt.Errorf("in getAllChannelHandles(): error retrieiving handle: %s", err))
-			continue
-		}
-		uploadIds = append(uploadIds, uploadId)
-	}
-
-	return uploadIds, nil
-}
-
-// Retrieves the channelId associated with the given handle
-func getChannelId(s *state, channelHandle string) (string, error) {
-	ctx := context.Background()
-
-	channelId, err := s.db.GetChannelIdByHandle(ctx, channelHandle)
-	if err != nil {
-		return "", fmt.Errorf("in getChannelId(): error retrieving channelId for channelHandle<%s>: %s", channelHandle, err)
-	}
-
-	return channelId, nil
-}
-
-// Adds the channel to feed, calling createFeedChannel
-func addChannelToFeed(s *state, feedId int32, channelHandle string) error {
-	var channelId, uploadId string
-	var exists bool
-	ctx := context.Background()
-
-	contains, err := s.db.ContainsChannelInDB(ctx, channelHandle)
-	if err != nil {
-		return fmt.Errorf("in addChannelToFeed(): error checking if DB contains channel: %v", err)
-	}
-	if !contains {
-		exists, channelId, uploadId, err = youtube.GetChannelIdUploadId(channelHandle)
-		if err != nil {
-			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId: %s", err)
-		} else if !exists {
-			return fmt.Errorf("in addChannelToFeed(): channelHandle did not match any youtube channel")
-		}
-	} else {
-		channelIdUploadId, err := s.db.GetChannelIdUploadIdByHandle(ctx, channelHandle)
-		if err != nil {
-			return fmt.Errorf("in addChannelToFeed(): error retrieving channelId and uploadId: %s", err)
-		}
-		channelId = channelIdUploadId.ChannelID
-		uploadId = channelIdUploadId.ChannelUploadID
-	}
-
-	err = createFeedChannel(s, feedId, channelId, uploadId, channelHandle)
-	if err != nil {
-		return fmt.Errorf("in addChannelToFeed(): error creating feed channel: %s", err)
-	}
-
-	return nil
-}
-
-// Updates the name of the specified feed belonging to the specified user
-func updateFeedName(s *state, feedId int32, newFeedName string) error {
-	params := database.UpdateFeedNameQueryParams{
-		ID:        feedId,
-		Name:      newFeedName,
-		UpdatedAt: time.Now(),
-	}
-
-	err := s.db.UpdateFeedNameQuery(context.Background(), params)
-	if err != nil {
-		return fmt.Errorf("in updateFeedName(): error updating the feed name: %s", err)
-	}
-
-	return nil
+	log.Fatal(http.ListenAndServe(PORT, router))
 }
