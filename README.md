@@ -4,7 +4,9 @@
 
 A Chrome extension that allows you to create personalized YouTube feeds containing content 
 only from channels that you select. Once feeds are created, you can view a list of recent 
-videos from all channels in the feed. 
+videos from all channels in the feed.  
+
+Frontend code can be found here - **[Frontend Repository](https://github.com/luke-mayer/youtube-custom-feeds-chrome-extension)**
 
 <p align="center"><img src="images/YCF_SS1.png"/></p>
 
