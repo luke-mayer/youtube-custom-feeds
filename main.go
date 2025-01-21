@@ -545,6 +545,7 @@ func main() {
 	api.HandleFunc("/channel", s.deleteChannelDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/user", s.deleteUserDELETE).Methods(http.MethodDelete)
 	api.HandleFunc("/login", handleOPTIONS).Methods(http.MethodOptions)
+	log.Printf("YCF server running on port %s", PORT)
 
 	log.Fatal(http.ListenAndServe(PORT, router))
 }

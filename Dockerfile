@@ -10,7 +10,7 @@ FROM debian:stable-slim
 
 # RUN apt-get update && apt-get install -y ca-certificates
 
-COPY youtube-custom-feeds /bin/youtube-custom-feeds
+# COPY youtube-custom-feeds /bin/youtube-custom-feeds
 
 WORKDIR /app
 COPY --from=builder /build/api ./api

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -11,6 +12,17 @@ type Config struct {
 
 func Read() (Config, error) {
 	var config Config
+	var devMode bool
+
+	devMode, err := strconv.ParseBool(os.Getenv("DEV_MODE"))
+	if err != nil {
+		devMode = false
+	}
+
+	if devMode {
+		config.DBUrl = fmt.Sprintf("%s?sslmode=disable", os.Getenv("YCF_DEV_DB"))
+		return config, nil
+	}
 
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASS")
