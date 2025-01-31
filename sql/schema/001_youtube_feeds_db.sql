@@ -1,7 +1,6 @@
 -- +goose Up
 CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    fb_user_id VARCHAR(255) UNIQUE NOT NULL,
+    fb_user_id VARCHAR(255) PRIMARY KEY,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );
@@ -11,10 +10,10 @@ CREATE TABLE feeds (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     name TEXT NOT NULL,
-    user_id INTEGER NOT NULL,
+    user_id VARCHAR(255) NOT NULL,
     CONSTRAINT fk_user_id
         FOREIGN KEY(user_id)
-            REFERENCES users(id)
+            REFERENCES users(fb_user_id)
                 ON DELETE CASCADE,
     CONSTRAINT unique_name_user
         UNIQUE(name, user_id)

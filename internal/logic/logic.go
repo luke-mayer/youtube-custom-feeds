@@ -25,7 +25,7 @@ type State struct {
 func GetState() (*State, error) {
 	var s State
 
-	tempCfg, err := config.Read() // retrieves state from youtube-custom-feeds.json
+	tempCfg, err := config.Read() // Gets db info
 	if err != nil {
 		return &State{}, fmt.Errorf("in getState(): error retireving config json: %s", err)
 	}
@@ -46,16 +46,6 @@ func GetState() (*State, error) {
 	s.Db = database.New(db)
 
 	return &s, nil
-}
-
-// Retrieves user id using a firebase user id
-func getUserId(s *State, firebaseId string) (int32, error) {
-	userId, err := s.Db.GetUserIdByFirebaseId(context.Background(), firebaseId)
-	if err != nil {
-		return 0, fmt.Errorf("in getUserId(): error retrieving userId: %s", err)
-	}
-
-	return userId, nil
 }
 
 // Creates a new user in the database
@@ -79,7 +69,7 @@ func registerUser(s *State, firebaseId string) error {
 //************************************//
 
 // Creates a custom feed for a user
-func createFeed(s *State, userId int32, feedName string) (bool, database.Feed, error) {
+func createFeed(s *State, userId string, feedName string) (bool, database.Feed, error) {
 	feed := database.Feed{}
 	ctx := context.Background()
 
