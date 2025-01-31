@@ -1,13 +1,13 @@
-package main
+package routes
 
 import (
-	"log"
-
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/logic"
-	"github.com/luke-mayer/youtube-custom-feeds/internal/routes"
 )
+
+func AttachRoutes(e *echo.Echo, s *logic.State) {
+	e.GET("/", logic.GetHelloWorld)
+}
 
 /*
 func main() {
@@ -35,22 +35,5 @@ func main() {
 
 	log.Fatal(http.ListenAndServe(PORT, router))
 }
+
 */
-
-func main() {
-	// TODO make an ENV variable
-	port := ":8080"
-
-	s, err := logic.GetState()
-	if err != nil {
-		log.Fatalf("Error initializing state: %s", err)
-	}
-
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.CORS())
-
-	routes.AttachRoutes(e, s)
-
-	e.Logger.Fatal(e.Start(port))
-}
