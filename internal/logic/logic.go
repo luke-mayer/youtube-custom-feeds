@@ -56,7 +56,7 @@ func registerUser(s *State, firebaseId string) error {
 		UpdatedAt: time.Now(),
 	}
 
-	_, err := s.Db.CreateUser(context.Background(), params)
+	err := s.Db.CreateUser(context.Background(), params)
 	if err != nil {
 		return fmt.Errorf("error in registerUser(): error creating user in database: %s", err)
 	}
@@ -104,16 +104,16 @@ func createFeed(s *State, userId string, feedName string) (bool, database.Feed, 
 }
 
 // Retrieves all feeds belonging to the specified user
-func getAllUserFeeds(s *State, userId int32) ([]database.GetAllUserFeedsRow, error) {
+func getAllUserFeeds(s *State, userId string) ([]database.GetAllUserFeedsRow, error) {
 	feeds := []database.GetAllUserFeedsRow{}
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return feeds, fmt.Errorf("in getAllUserFeeds(): error checking if userId exists: %s", err)
 	}
 	if !exists {
-		return feeds, fmt.Errorf("in getAllUserFeeds(): error user with id %v does not exist in database", userId)
+		return feeds, fmt.Errorf("in getAllUserFeeds(): error user with firebase id %v does not exist in database", userId)
 	}
 
 	feeds, err = s.Db.GetAllUserFeeds(ctx, userId)
@@ -125,10 +125,10 @@ func getAllUserFeeds(s *State, userId int32) ([]database.GetAllUserFeedsRow, err
 }
 
 // Retrieves all feedNames belonging to the specified user
-func getAllUserFeedNames(s *State, userId int32) ([]string, error) {
+func getAllUserFeedNames(s *State, userId string) ([]string, error) {
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return []string{}, fmt.Errorf("in getAllUserFeedNames(): error checking if userId exists: %s", err)
 	}
@@ -145,10 +145,10 @@ func getAllUserFeedNames(s *State, userId int32) ([]string, error) {
 }
 
 // Retrieves feed id for the feed withe the provided name, belonging to the specified user
-func getUserFeedId(s *State, userId int32, feedName string) (int32, error) {
+func getUserFeedId(s *State, userId string, feedName string) (int32, error) {
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return 0, fmt.Errorf("error checking if userId exists: %s", err)
 	}
@@ -170,10 +170,10 @@ func getUserFeedId(s *State, userId int32, feedName string) (int32, error) {
 }
 
 // Deletes the user, including all of their feeds and subsequent channels
-func deleteUser(s *State, userId int32) error {
+func deleteUser(s *State, userId string) error {
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return fmt.Errorf("in deleteUser(): error checking if userId exists: %s", err)
 	}
@@ -195,10 +195,10 @@ func deleteUser(s *State, userId int32) error {
 }
 
 // Deletes all feeds belonging to the specified user
-func deleteAllFeeds(s *State, userId int32) error {
+func deleteAllFeeds(s *State, userId string) error {
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return fmt.Errorf("in deleteAllFeeds(): error checking if userId exists: %s", err)
 	}
@@ -223,10 +223,10 @@ func deleteAllFeeds(s *State, userId int32) error {
 
 // Deletes feed with given name belonging to the specified user.
 // Deletes all feed-channels as a consequence
-func deleteFeed(s *State, userId int32, feedName string) error {
+func deleteFeed(s *State, userId string, feedName string) error {
 	ctx := context.Background()
 
-	exists, err := s.Db.ContainsUserById(ctx, userId)
+	exists, err := s.Db.ContainsUserByFirebaseId(ctx, userId)
 	if err != nil {
 		return fmt.Errorf("error checking if userId exists: %s", err)
 	}
@@ -485,87 +485,7 @@ const PORT = ":8080"
 const PREFIX = "/api/v1"
 const VIDEO_LIMIT = 10
 
-type StatusCodes struct {
-	Success       int
-	ErrRequest    int
-	ErrDecoding   int
-	ErrFirebaseId int
-	ErrServer     int
-	ErrState      int
-	ErrUserId     int
-	ErrMarshaling int
-	ErrFeed       int
-	ErrFeedExists int
-}
-
-var statusCodes = StatusCodes{
-	Success:       200,
-	ErrRequest:    400,
-	ErrDecoding:   400,
-	ErrFirebaseId: 400,
-	ErrServer:     500,
-	ErrState:      503,
-	ErrUserId:     500,
-	ErrMarshaling: 500,
-	ErrFeed:       500,
-	ErrFeedExists: 500,
-}
-
-var statusCodeMessages = map[int]string{
-	statusCodes.Success:       "successful completion",
-	statusCodes.ErrRequest:    "error: invalid request",
-	statusCodes.ErrDecoding:   "error: decoding parameters",
-	statusCodes.ErrFirebaseId: "error: firebase id issue",
-	statusCodes.ErrServer:     "error: server issue",
-	statusCodes.ErrState:      "error: issue initializing state",
-	statusCodes.ErrUserId:     "error: retrieving user id",
-	statusCodes.ErrMarshaling: "error: marshaling JSON",
-	statusCodes.ErrFeed:       "error: creating feed",
-	statusCodes.ErrFeedExists: "error: feed with provided name already exists for specified user",
-}
-
-type parameters interface {
-	firebaseIdParams | feedParams | feedChannelParams | updateFeedParams
-	getFirebaseId() string
-}
-
-type firebaseIdParams struct {
-	FirebaseId string `json:"Firebase-Id"`
-}
-
-type feedParams struct {
-	FirebaseId string `json:"firebaseId"`
-	FeedName   string `json:"feedName"`
-}
-
-type feedChannelParams struct {
-	FirebaseId    string `json:"firebaseId"`
-	FeedName      string `json:"feedName"`
-	ChannelHandle string `json:"channelHandle"`
-}
-
-type updateFeedParams struct {
-	FirebaseId  string `json:"firebaseId"`
-	FeedName    string `json:"feedName"`
-	NewFeedName string `json:"newFeedName"`
-}
-
-func (p firebaseIdParams) getFirebaseId() string {
-	return p.FirebaseId
-}
-
-func (p feedParams) getFirebaseId() string {
-	return p.FirebaseId
-}
-
-func (p feedChannelParams) getFirebaseId() string {
-	return p.FirebaseId
-}
-
-func (p updateFeedParams) getFirebaseId() string {
-	return p.FirebaseId
-}
-
+/*
 // Used to unpack parameters from request and initialize the state and userId, returns statusCode if error
 func unpackRequest[T parameters](params *T, r *http.Request, s *State) (int32, int, error) {
 	decoder := json.NewDecoder(r.Body)
@@ -635,6 +555,7 @@ func writeResponse[T any](w http.ResponseWriter, resBody T, statusCode int) {
 	w.WriteHeader(statusCode)
 	w.Write(data)
 }
+*/
 
 /*
 // validates OAuth2 ID token and returns firebaseId (sum field)
@@ -702,8 +623,8 @@ type Message struct {
 	Message string `json:"message"`
 }
 
+// POST - Checks if user is in the database. If not, creates a new user
 func (s *State) Login(c echo.Context) error {
-
 	firebaseId := c.Request().Header.Get("Firebase-ID")
 	if firebaseId == "" {
 		log.Println("in login(): error retireving firebaseId")
@@ -734,21 +655,23 @@ func (s *State) Login(c echo.Context) error {
 }
 
 // POST - Creates a new feed
-func (s *State) createFeedPOST(w http.ResponseWriter, r *http.Request) {
-	params := feedParams{}
-
-	userId, statusCode, err := unpackRequest(&params, r, s)
-	if err != nil {
-		log.Printf("in createFeedPOST(): %s: %s", statusCodeMessages[statusCode], err)
-		writeResponseMessage(w, statusCodeMessages[statusCode], statusCode)
-		return
+func (s *State) CreateFeedHandler(c echo.Context) error {
+	userId := c.Request().Header.Get("Firebase-Id")
+	if userId == "" {
+		log.Print("in createFeedHandler: Could not retreive Firebase-Id from request")
+		return echo.NewHTTPError(http.StatusUnauthorized, "Firebase-ID is not present")
 	}
 
-	contains, _, err := createFeed(s, userId, params.FeedName)
+	feedName := c.FormValue("feedName")
+	if feedName == "" {
+		log.Printf("in createFeedHandler: Could not retrieve feedName from request")
+		return echo.NewHTTPError(http.StatusBadRequest, "feedName is not present")
+	}
+
+	contains, _, err := createFeed(s, userId, feedName)
 	if err != nil {
-		log.Printf("in createFeedPOST(): error creating feed: %s", err)
-		writeResponseMessage(w, statusCodeMessages[statusCodes.ErrFeed], statusCodes.ErrFeed)
-		return
+		log.Printf("in createFeedHandler: error creating feed: %s", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "feedName is not present")
 	}
 	if contains {
 		message := fmt.Sprintf("Feed with name - %s - already exists for specified user", params.FeedName)

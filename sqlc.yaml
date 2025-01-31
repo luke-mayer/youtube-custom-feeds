@@ -6,3 +6,8 @@ sql:
     gen:
       go:
         out: "internal/database"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
