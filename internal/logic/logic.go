@@ -673,6 +673,7 @@ func validateFirebaseId(token string) (string, error) {
 // ------------------------ //
 
 // POST - Checks if user is in the database. If not, creates a new user
+/*
 func (s *State) login(w http.ResponseWriter, r *http.Request) {
 
 	firebaseId := r.Header.Get("Firebase-ID")
@@ -704,6 +705,42 @@ func (s *State) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponseMessage(w, message, statusCodes.Success)
+}
+*/
+
+type Message struct {
+	Message string `json:"message"`
+}
+
+func (s *State) Login(c echo.Context) error {
+
+	firebaseId := c.Request().Header.Get("Firebase-ID")
+	if firebaseId == "" {
+		log.Println("in login(): error retireving firebaseId")
+		return echo.NewHTTPError(http.StatusUnauthorized, "Firebase-ID is not present")
+	}
+
+	exists, err := s.Db.ContainsUserByFirebaseId(context.Background(), firebaseId)
+	if err != nil {
+		errMessage := fmt.Sprintf("in login(): %s: %s", "Error checking if user exists in database", err)
+		log.Println(errMessage)
+		return echo.NewHTTPError(http.StatusInternalServerError, "")
+	}
+
+	if !exists {
+		err := registerUser(s, firebaseId)
+		if err != nil {
+			errMessage := fmt.Sprintf("in login(): %s: %s", "Issue registering new user", err)
+			log.Println(errMessage)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Issue registering new user")
+		}
+	}
+
+	message := Message{
+		Message: "Success",
+	}
+
+	return c.JSON(http.StatusOK, message)
 }
 
 // POST - Creates a new feed

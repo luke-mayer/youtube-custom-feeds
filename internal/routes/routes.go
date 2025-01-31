@@ -7,6 +7,7 @@ import (
 
 func AttachRoutes(e *echo.Echo, s *logic.State) {
 	e.GET("/", logic.GetHelloWorld)
+	e.GET("/login", s.Login)
 }
 
 /*
