@@ -3,7 +3,6 @@ package logic
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -623,19 +622,35 @@ type Message struct {
 	Message string `json:"message"`
 }
 
+// GET - hello world test function
+func GetHelloWorld(c echo.Context) error {
+	message := Message{
+		Message: "Hello World!",
+	}
+	return c.JSON(http.StatusOK, message)
+}
+
 // POST - Checks if user is in the database. If not, creates a new user
 func (s *State) Login(c echo.Context) error {
+	var message Message
+
 	firebaseId := c.Request().Header.Get("Firebase-ID")
 	if firebaseId == "" {
 		log.Println("in login(): error retireving firebaseId")
-		return echo.NewHTTPError(http.StatusUnauthorized, "Firebase-ID is not present")
+		message = Message{
+			Message: "Firebase-ID is not present",
+		}
+		return echo.NewHTTPError(http.StatusUnauthorized, message)
 	}
 
 	exists, err := s.Db.ContainsUserByFirebaseId(context.Background(), firebaseId)
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", "Error checking if user exists in database", err)
 		log.Println(errMessage)
-		return echo.NewHTTPError(http.StatusInternalServerError, "")
+		message = Message{
+			Message: "Error checking if user exists in database",
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, message)
 	}
 
 	if !exists {
@@ -643,12 +658,15 @@ func (s *State) Login(c echo.Context) error {
 		if err != nil {
 			errMessage := fmt.Sprintf("in login(): %s: %s", "Issue registering new user", err)
 			log.Println(errMessage)
-			return echo.NewHTTPError(http.StatusInternalServerError, "Issue registering new user")
+			message = Message{
+				Message: "Issue registering new user",
+			}
+			return echo.NewHTTPError(http.StatusInternalServerError, message)
 		}
 	}
 
-	message := Message{
-		Message: "Success",
+	message = Message{
+		Message: "Successfully Logged In",
 	}
 
 	return c.JSON(http.StatusOK, message)
@@ -656,6 +674,8 @@ func (s *State) Login(c echo.Context) error {
 
 // POST - Creates a new feed
 func (s *State) CreateFeedHandler(c echo.Context) error {
+	var message Message
+
 	userId := c.Request().Header.Get("Firebase-Id")
 	if userId == "" {
 		log.Print("in createFeedHandler: Could not retreive Firebase-Id from request")
@@ -674,14 +694,20 @@ func (s *State) CreateFeedHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "feedName is not present")
 	}
 	if contains {
-		message := fmt.Sprintf("Feed with name - %s - already exists for specified user", params.FeedName)
-		writeResponseMessage(w, message, statusCodes.ErrFeedExists)
-		return
+		messageStr := fmt.Sprintf("Feed with name - %s - already exists for specified user", feedName)
+		message = Message{
+			Message: messageStr,
+		}
+	} else {
+		message = Message{
+			Message: fmt.Sprintf("Feed - %s - successfully created", feedName),
+		}
 	}
 
-	message := fmt.Sprintf("Feed - %s - successfully created", params.FeedName)
-	writeResponseMessage(w, message, statusCodes.Success)
+	return c.JSON(http.StatusOK, message)
 }
+
+/*
 
 // POST - adds the youtube channel to the user's indicated field
 func (s *State) addChannelPOST(w http.ResponseWriter, r *http.Request) {
@@ -947,10 +973,6 @@ func (s *State) deleteUserDELETE(w http.ResponseWriter, r *http.Request) {
 	writeResponseMessage(w, message, statusCodes.Success)
 }
 
-// GET - hello world test function
-func GetHelloWorld(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello World")
-}
 
 // OPTIONS - preflight for cors
 func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
@@ -959,3 +981,5 @@ func handleOPTIONS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.WriteHeader(http.StatusOK)
 }
+
+*/
