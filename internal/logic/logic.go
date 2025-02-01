@@ -669,7 +669,7 @@ func (s *State) Login(c echo.Context) error {
 		Message: "Successfully Logged In",
 	}
 
-	return c.JSON(http.StatusOK, message)
+	return c.JSON(http.StatusCreated, message)
 }
 
 // POST - Creates a new feed
