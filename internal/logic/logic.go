@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	firebase "firebase.google.com/go"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
@@ -16,8 +17,9 @@ import (
 )
 
 type State struct {
-	Db  *database.Queries
-	Cfg *config.Config
+	Db      *database.Queries
+	Cfg     *config.Config
+	FireApp *firebase.App
 }
 
 // retrieves the current state with sql database connection and current userName
@@ -28,7 +30,6 @@ func GetState() (*State, error) {
 	if err != nil {
 		return &State{}, fmt.Errorf("in getState(): error retireving config json: %s", err)
 	}
-
 	s.Cfg = &tempCfg
 
 	db, err := sql.Open("postgres", s.Cfg.DBUrl)
@@ -41,8 +42,14 @@ func GetState() (*State, error) {
 		log.Printf("Error pinging database: %v", err)
 		return &State{}, fmt.Errorf("in getState(): error pinging database: %v", err)
 	}
-
 	s.Db = database.New(db)
+
+	app, err := firebase.NewApp(context.Background(), nil)
+	if err != nil {
+		log.Printf("error initializing firebase app: %v\n", err)
+		retruen &State{}, fmt.Errorf("in GetState: error initializing firebase app: %v", err)
+	}
+	s.FireApp = app
 
 	return &s, nil
 }
@@ -622,6 +629,28 @@ type Message struct {
 	Message string `json:"message"`
 }
 
+func (s *State) authenticateUser(c echo.Context) (error, string) {
+	ctx := context.Background()
+
+	client, err := s.FireApp.Auth(ctx)
+	if err != nil {
+		return fmt.Errorf("error retrieving auth client: %v\n", err), ""
+	}
+
+	auth := c.Request().Header.Get("Authorization")
+	if auth == "" {
+		return fmt.Errorf("idToken not present"), ""
+	}
+	idToken := strings.Replace(auth, "Bearer ", "", 1)
+
+	token, err :=  client.VerifyIDToken(ctx, idToken)
+	if err != nil {
+		return fmt.Errorf("error verifying idToken: %v\n", err), ""
+	}	
+
+	return nil, token.UID
+}
+
 // GET - hello world test function
 func GetHelloWorld(c echo.Context) error {
 	message := Message{
@@ -634,16 +663,17 @@ func GetHelloWorld(c echo.Context) error {
 func (s *State) Login(c echo.Context) error {
 	var message Message
 
-	firebaseId := c.Request().Header.Get("Firebase-ID")
-	if firebaseId == "" {
-		log.Println("in login(): error retireving firebaseId")
+	err, userId := s.authenticateUser(idToken)
+	if err != nil {
+		errStr := fmt.Sprintf("error retrieving userId: %v", err)
+		log.Println(errStr)
 		message = Message{
-			Message: "Firebase-ID is not present",
+			Message: errStr,
 		}
 		return echo.NewHTTPError(http.StatusUnauthorized, message)
 	}
 
-	exists, err := s.Db.ContainsUserByFirebaseId(context.Background(), firebaseId)
+	exists, err := s.Db.ContainsUserByFirebaseId(context.Background(), userId)
 	if err != nil {
 		errMessage := fmt.Sprintf("in login(): %s: %s", "Error checking if user exists in database", err)
 		log.Println(errMessage)
@@ -654,7 +684,7 @@ func (s *State) Login(c echo.Context) error {
 	}
 
 	if !exists {
-		err := registerUser(s, firebaseId)
+		err := registerUser(s, userId)
 		if err != nil {
 			errMessage := fmt.Sprintf("in login(): %s: %s", "Issue registering new user", err)
 			log.Println(errMessage)
