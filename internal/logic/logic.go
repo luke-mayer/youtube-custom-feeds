@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	firebase "firebase.google.com/go"
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
@@ -25,6 +28,11 @@ type State struct {
 // retrieves the current state with sql database connection and current userName
 func GetState() (*State, error) {
 	var s State
+
+	err := godotenv.Load("../../.env")
+	if err != nil {
+		return &State{}, fmt.Errorf("in GetState: error injecting environment variables: %s\n", err)
+	}
 
 	tempCfg, err := config.Read() // Gets db info
 	if err != nil {
@@ -47,7 +55,7 @@ func GetState() (*State, error) {
 	app, err := firebase.NewApp(context.Background(), nil)
 	if err != nil {
 		log.Printf("error initializing firebase app: %v\n", err)
-		retruen &State{}, fmt.Errorf("in GetState: error initializing firebase app: %v", err)
+		return &State{}, fmt.Errorf("in GetState: error initializing firebase app: %v", err)
 	}
 	s.FireApp = app
 
@@ -632,6 +640,12 @@ type Message struct {
 func (s *State) authenticateUser(c echo.Context) (error, string) {
 	ctx := context.Background()
 
+	// Used for unit tests to avoid needing a real IDToken
+	isTest, err := strconv.ParseBool(c.Get("isTest").(string))
+	if err == nil && isTest {
+		return nil, c.Get("testUID").(string)
+	}
+
 	client, err := s.FireApp.Auth(ctx)
 	if err != nil {
 		return fmt.Errorf("error retrieving auth client: %v\n", err), ""
@@ -643,10 +657,10 @@ func (s *State) authenticateUser(c echo.Context) (error, string) {
 	}
 	idToken := strings.Replace(auth, "Bearer ", "", 1)
 
-	token, err :=  client.VerifyIDToken(ctx, idToken)
+	token, err := client.VerifyIDToken(ctx, idToken)
 	if err != nil {
 		return fmt.Errorf("error verifying idToken: %v\n", err), ""
-	}	
+	}
 
 	return nil, token.UID
 }
@@ -663,7 +677,7 @@ func GetHelloWorld(c echo.Context) error {
 func (s *State) Login(c echo.Context) error {
 	var message Message
 
-	err, userId := s.authenticateUser(idToken)
+	err, userId := s.authenticateUser(c)
 	if err != nil {
 		errStr := fmt.Sprintf("error retrieving userId: %v", err)
 		log.Println(errStr)
@@ -693,13 +707,17 @@ func (s *State) Login(c echo.Context) error {
 			}
 			return echo.NewHTTPError(http.StatusInternalServerError, message)
 		}
+		message = Message{
+			Message: "Successfully registered new user",
+		}
+		return c.JSON(http.StatusCreated, message)
 	}
 
 	message = Message{
 		Message: "Successfully Logged In",
 	}
 
-	return c.JSON(http.StatusCreated, message)
+	return c.JSON(http.StatusOK, message)
 }
 
 // POST - Creates a new feed

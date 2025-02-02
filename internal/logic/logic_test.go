@@ -13,28 +13,30 @@ import (
 func TestLogin(t *testing.T) {
 	s, err := GetState()
 	if err != nil {
-		t.Fatalf("Issue initalizing state: %s\n", err)
+		t.Fatalf("Error initalizing state: %s\n", err)
 	}
 
-	testId := "testId"
-	err = registerUser(s, testId)
+	testUID := "test-uid"
+
+	err = registerUser(s, testUID)
 	if err != nil {
-		t.Fatalf("Issue adding test user to database: %s\n", err)
+		t.Fatalf("Error adding test user to database: %s\n", err)
 	}
 
-	defer deleteUser(s, testId)
+	defer deleteUser(s, testUID)
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(""))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	req.Header.Set("Firebase-ID", testId)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("isTest", "true")
+	c.Set("testUID", testUID)
 
 	expectedMessage := "{\"message\":\"Successfully Logged In\"}\n"
 
 	if assert.NoError(t, s.Login(c)) {
-		assert.Equal(t, http.StatusCreated, rec.Code)
+		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, expectedMessage, rec.Body.String())
 	}
 }
