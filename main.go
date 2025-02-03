@@ -2,7 +2,10 @@ package main
 
 import (
 	"log"
+	"os"
+	"strconv"
 
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/logic"
@@ -39,16 +42,29 @@ func main() {
 
 func main() {
 	// TODO make an ENV variable
-	port := ":8080"
+	port := ":8000"
 
-	s, err := logic.GetState()
-	if err != nil {
-		log.Fatalf("Error initializing state: %s", err)
+	dockerized, err := strconv.ParseBool(os.Getenv("DOCKERIZED"))
+	if !dockerized || err != nil {
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatalf("Error injecting environment variables: %s\n", err)
+		}
 	}
 
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.CORS())
+
+	e.Logger.SetLevel(2)
+
+	e.Logger.Info("Starting Echo server...")
+	log.Println("this is log")
+
+	s, err := logic.GetState()
+	if err != nil {
+		log.Fatalf("Error initializing state: %s", err)
+	}
 
 	routes.AttachRoutes(e, s)
 

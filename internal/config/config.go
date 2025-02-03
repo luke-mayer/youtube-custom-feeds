@@ -19,17 +19,22 @@ func Read() (Config, error) {
 		devMode = false
 	}
 
-	if devMode {
-		config.DBUrl = fmt.Sprintf("%s?sslmode=disable", os.Getenv("YCF_DEV_DB"))
-		return config, nil
-	}
-
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASS")
 	dbName := os.Getenv("DB_NAME")
 	instanceConnectionName := os.Getenv("INSTANCE_CONNECTION_NAME")
 	// dbHost := os.Getenv("DB_HOST")
 	// dbPort := "5432"
+
+	if devMode {
+		dbHost := os.Getenv("DB_HOST")
+		dbPort := os.Getenv("DB_PORT")
+		url := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+		config.DBUrl = url
+
+		return config, nil
+	}
 
 	socketDir := "/cloudsql"
 

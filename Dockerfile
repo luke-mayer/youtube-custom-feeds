@@ -1,18 +1,17 @@
 FROM golang:1.23.5-alpine AS builder
 
-WORKDIR /build
-COPY . .
-
+WORKDIR /build/
+COPY go.* ./
 RUN go mod download
-RUN go build -o ./api
 
-FROM debian:stable-slim
+FROM builder AS build
 
-# RUN apt-get update && apt-get install -y ca-certificates
+COPY . ./
+RUN go build -o api .
 
-# COPY youtube-custom-feeds /bin/youtube-custom-feeds
+FROM alpine:latest
 
-WORKDIR /app
-COPY --from=builder /build/api ./api
+WORKDIR /app/
+COPY --from=build /build/api ./api
 
-CMD ["/app/api"]
+CMD ["./api"]

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	firebase "firebase.google.com/go"
-	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 	"github.com/luke-mayer/youtube-custom-feeds/internal/config"
@@ -28,11 +27,6 @@ type State struct {
 // retrieves the current state with sql database connection and current userName
 func GetState() (*State, error) {
 	var s State
-
-	err := godotenv.Load("../../.env")
-	if err != nil {
-		return &State{}, fmt.Errorf("in GetState: error injecting environment variables: %s\n", err)
-	}
 
 	tempCfg, err := config.Read() // Gets db info
 	if err != nil {
@@ -637,32 +631,32 @@ type Message struct {
 	Message string `json:"message"`
 }
 
-func (s *State) authenticateUser(c echo.Context) (error, string) {
+func (s *State) authenticateUser(c echo.Context) (string, error) {
 	ctx := context.Background()
 
 	// Used for unit tests to avoid needing a real IDToken
 	isTest, err := strconv.ParseBool(c.Get("isTest").(string))
 	if err == nil && isTest {
-		return nil, c.Get("testUID").(string)
+		return c.Get("testUID").(string), nil
 	}
 
 	client, err := s.FireApp.Auth(ctx)
 	if err != nil {
-		return fmt.Errorf("error retrieving auth client: %v\n", err), ""
+		return "", fmt.Errorf("error retrieving auth client: %v\n", err)
 	}
 
 	auth := c.Request().Header.Get("Authorization")
 	if auth == "" {
-		return fmt.Errorf("idToken not present"), ""
+		return "", fmt.Errorf("idToken not present")
 	}
 	idToken := strings.Replace(auth, "Bearer ", "", 1)
 
 	token, err := client.VerifyIDToken(ctx, idToken)
 	if err != nil {
-		return fmt.Errorf("error verifying idToken: %v\n", err), ""
+		return "", fmt.Errorf("error verifying idToken: %v\n", err)
 	}
 
-	return nil, token.UID
+	return token.UID, nil
 }
 
 // GET - hello world test function
@@ -677,7 +671,7 @@ func GetHelloWorld(c echo.Context) error {
 func (s *State) Login(c echo.Context) error {
 	var message Message
 
-	err, userId := s.authenticateUser(c)
+	userId, err := s.authenticateUser(c)
 	if err != nil {
 		errStr := fmt.Sprintf("error retrieving userId: %v", err)
 		log.Println(errStr)
@@ -724,10 +718,14 @@ func (s *State) Login(c echo.Context) error {
 func (s *State) CreateFeedHandler(c echo.Context) error {
 	var message Message
 
-	userId := c.Request().Header.Get("Firebase-Id")
-	if userId == "" {
-		log.Print("in createFeedHandler: Could not retreive Firebase-Id from request")
-		return echo.NewHTTPError(http.StatusUnauthorized, "Firebase-ID is not present")
+	userId, err := s.authenticateUser(c)
+	if err != nil {
+		errStr := fmt.Sprintf("error retrieving userId: %v", err)
+		log.Println(errStr)
+		message = Message{
+			Message: errStr,
+		}
+		return echo.NewHTTPError(http.StatusUnauthorized, message)
 	}
 
 	feedName := c.FormValue("feedName")

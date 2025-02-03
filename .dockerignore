@@ -1,0 +1,10 @@
+youtube-custom-feeds-client-id.json
+ytcf-clientid.json
+
+# Firebase Service Account Credentials
+ycf-service-account.json
+
+.secrets/
+zOldCode/
+
+.env

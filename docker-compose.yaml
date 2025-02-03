@@ -1,0 +1,83 @@
+services:
+  db:
+    image: postgres:16
+    container_name: pg_db
+    ports:
+      - 5432:5432
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./
+      target: builder
+    container_name: ycf_api
+    entrypoint: ["go"]
+    command: ["run", "main.go"]
+    volumes:
+      - ./:/build/
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8000:8000
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
+      YOUTUBE_CUSTOM_FEEDS_YT_API_KEY: ${YOUTUBE_CUSTOM_FEEDS_YT_API_KEY}
+      YCF_DEV_DB: ${YCF_DEV_DB}
+      DEV_MODE: ${DEV_MODE}
+      YCF_PROD_DB: ${YCF_PROD_DB}
+      YOUTUBE_CUSTOM_FEEDS_CONFIG: ${YOUTUBE_CUSTOM_FEEDS_CONFIG}
+      YOUTUBE_CUSTOM_FEEDS_CLIENT_ID: ${YOUTUBE_CUSTOM_FEEDS_CLIENT_ID}
+      FB_PROJECT_ID: ${FB_PROJECT_ID}
+      FB_API_KEY: ${FB_API_KEY}
+      DOCKERIZED: "true"
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: "db"
+      DB_PORT: ${DB_PORT}
+
+  test:
+    build:
+      context: ./
+      target: builder
+    container_name: test_runner
+    entrypoint: ["go"]
+    command: ["test", "./..."]
+    volumes:
+      - ./:/build/
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8000:8000
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
+      YOUTUBE_CUSTOM_FEEDS_YT_API_KEY: ${YOUTUBE_CUSTOM_FEEDS_YT_API_KEY}
+      YCF_DEV_DB: ${YCF_DEV_DB}
+      DEV_MODE: ${DEV_MODE}
+      YCF_PROD_DB: ${YCF_PROD_DB}
+      YOUTUBE_CUSTOM_FEEDS_CONFIG: ${YOUTUBE_CUSTOM_FEEDS_CONFIG}
+      YOUTUBE_CUSTOM_FEEDS_CLIENT_ID: ${YOUTUBE_CUSTOM_FEEDS_CLIENT_ID}
+      FB_PROJECT_ID: ${FB_PROJECT_ID}
+      FB_API_KEY: ${FB_API_KEY}
+      DOCKERIZED: "true"
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: "db"
+      DB_PORT: ${DB_PORT}
+
+volumes:
+  pgdata:
